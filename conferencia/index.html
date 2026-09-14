@@ -16,6 +16,8 @@
 <header class="topo">
   <h1>Conferência de Pagamentos <span>· NOCTUS</span></h1>
   <nav>
+    <button type="button" class="topo-btn" id="btn-config"
+            title="Configurações do módulo">Configurações</button>
     <a class="voltar" id="voltar-topo" href="../#/">Voltar</a>
   </nav>
 </header>
@@ -25,10 +27,6 @@
   <!-- 1. upload -->
   <section id="tela-upload" class="cartao">
     <h2>Novo relatório</h2>
-    <p class="sub" style="margin-top:-.5rem;margin-bottom:1rem">
-      Relatório “Solicitações de Pagamentos por Débito em Conta Corrente” (SCK), em PDF.
-      O arquivo é lido aqui no seu navegador — nada é enviado para servidor nenhum.
-    </p>
     <div class="solta" id="solta">
       <strong>Clique para escolher o PDF</strong>
       <span>ou arraste o arquivo para cá</span>
@@ -120,7 +118,43 @@
       </div>
       <div id="res-lista" hidden>
         <div class="lista-tipos" id="res-filtros"></div>
+        <div class="lista-status" id="res-status-filtros"></div>
         <div id="res-corpo"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 4. configurações -->
+  <section id="tela-config" class="oculto">
+    <div class="cartao">
+      <h2>Configurações</h2>
+      <p class="sub" style="margin-top:-.6rem;margin-bottom:1.2rem">
+        Ajustes deste módulo. Ficam guardados neste navegador.
+      </p>
+
+      <div class="config-item">
+        <div class="config-item__texto">
+          <strong>Valor do OTN</strong>
+          <span class="sub">Converte para reais os limites de poder, que a Relação de
+            Competentes e Poderes cadastra em OTN. O valor muda ao longo do tempo.</span>
+        </div>
+        <div class="config-item__acao">
+          <span class="config-item__prefixo">R$</span>
+          <input type="number" step="0.01" min="0.01" id="cfg-otn" class="otn-input"
+                 aria-label="Valor do OTN em reais">
+          <button type="button" class="botao fantasma" id="cfg-salvar">Salvar</button>
+        </div>
+      </div>
+
+      <div id="cfg-msg"></div>
+
+      <div class="acoes">
+        <div>
+          <button type="button" class="botao fantasma" id="cfg-padrao">Restaurar padrão</button>
+        </div>
+        <div>
+          <button type="button" class="botao primario" id="cfg-concluir">Concluir</button>
+        </div>
       </div>
     </div>
   </section>
