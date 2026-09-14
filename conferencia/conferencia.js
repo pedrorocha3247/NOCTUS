@@ -488,8 +488,27 @@ function render() {
   $("rev-contador").textContent = `solicitação ${estado.i + 1} de ${total} · ${feitos()} conferidas`;
   $("rev-barra").style.width = (feitos() / total * 100).toFixed(1) + "%";
 
-  $("rev-alertas").innerHTML = apontamentosLista(s)
-    .map((a) => `<div class="alerta">${a}</div>`).join("");
+  const listaApont = apontamentosLista(s);
+  const ocultosApont = alertasOcultosDe(s.sn);
+  const visiveisApont = listaApont.filter((a) => !ocultosApont.includes(a));
+  $("rev-alertas").innerHTML =
+    visiveisApont.map((a) => `
+      <div class="alerta alerta--removivel">
+        <span>${escAnexo(a)}</span>
+        <button type="button" class="alerta__x" data-remover-apont
+                title="Remover este apontamento — some da tela, do resumo, da planilha e do relatório impresso">✕</button>
+      </div>`).join("") +
+    (ocultosApont.length
+      ? `<div class="sub apont-ocultos">
+           ${ocultosApont.length} apontamento(s) removido(s) desta solicitação.
+           <button type="button" class="linkbtn" id="btn-restaurar-apont">Restaurar</button>
+         </div>`
+      : "");
+  $("rev-alertas").querySelectorAll("[data-remover-apont]").forEach((btn, i) => {
+    btn.onclick = () => { ocultarApontamento(s.sn, visiveisApont[i]); render(); };
+  });
+  const btnRestaurarApont = $("btn-restaurar-apont");
+  if (btnRestaurarApont) btnRestaurarApont.onclick = () => { restaurarApontamentos(s.sn); render(); };
 
   $("c-sn").textContent = s.sn;
   $("c-valor").textContent = "R$ " + moeda(s.valor);
@@ -513,7 +532,12 @@ function render() {
 function salvarAtual() {
   const s = estado.itens[estado.i];
   const st = document.querySelector('input[name="status"]:checked');
-  estado.pareceres[s.sn] = { status: st ? st.value : "", parecer: $("rev-parecer").value.trim() };
+  const anterior = estado.pareceres[s.sn] || {};
+  estado.pareceres[s.sn] = {
+    status: st ? st.value : "",
+    parecer: $("rev-parecer").value.trim(),
+    ...(anterior.alertasOcultos?.length ? { alertasOcultos: anterior.alertasOcultos } : {}),
+  };
   salvar();
 }
 
@@ -552,8 +576,32 @@ const APONTADAS = "@apontadas";   // valor de filtro que não colide com nome de
 /** Apontamentos do parser + o de poder, que é recalculado quando o OTN muda. */
 const apontamentosLista = (s) =>
   [...(s.alertas || []), ...(s.alertaPoder ? [s.alertaPoder] : [])];
-const temApontamento = (s) => apontamentosLista(s).length > 0;
-const apontamentosDe = (s) => apontamentosLista(s).join(" · ");
+
+/**
+ * Apontamentos automáticos que o conferente removeu manualmente desta solicitação
+ * (falso positivo, já esclarecido etc.). Ficam guardados junto do parecer e somem de
+ * tudo — tela, resumo, planilha e relatório impresso —, não só da tela de revisão.
+ */
+const alertasOcultosDe = (sn) => estado.pareceres[sn]?.alertasOcultos || [];
+const apontamentosVisiveis = (s) =>
+  apontamentosLista(s).filter((a) => !alertasOcultosDe(s.sn).includes(a));
+const temApontamento = (s) => apontamentosVisiveis(s).length > 0;
+const apontamentosDe = (s) => apontamentosVisiveis(s).join(" · ");
+
+function ocultarApontamento(sn, texto) {
+  const p = estado.pareceres[sn] || { status: "", parecer: "" };
+  const atuais = p.alertasOcultos || [];
+  if (atuais.includes(texto)) return;
+  estado.pareceres[sn] = { ...p, alertasOcultos: [...atuais, texto] };
+  salvar();
+}
+
+function restaurarApontamentos(sn) {
+  const p = estado.pareceres[sn];
+  if (!p || !(p.alertasOcultos || []).length) return;
+  estado.pareceres[sn] = { ...p, alertasOcultos: [] };
+  salvar();
+}
 
 const SEM_STATUS = "Sem conferir";
 const statusDoItem = (s) => estado.pareceres[s.sn]?.status || SEM_STATUS;
@@ -1035,7 +1083,7 @@ function abaResumo(wb) {
 
   // quantas solicitações o próprio sistema marcou — evidência de que a
   // verificação automática rodou, e quanto ela achou
-  const comApontamento = estado.itens.filter((s) => (s.alertas || []).length).length;
+  const comApontamento = estado.itens.filter(temApontamento).length;
   ws.getCell("A4").value = comApontamento
     ? `${comApontamento} solicitação(ões) com apontamento automático — ver coluna "Apontamentos"`
     : "Nenhum apontamento automático neste lote";
