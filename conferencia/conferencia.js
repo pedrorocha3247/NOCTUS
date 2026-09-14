@@ -36,6 +36,11 @@ const CHAVE_ANTIGA = "sipep.conferencia";
 const CHAVE_OTN = "noctus.otn";
 const OTN_PADRAO = 130.30;
 
+/** Backend dos anexos (Supabase) — mesma sessão de login do NOCTUS (localStorage). */
+const SB_URL = "https://wyyqjlwzphlhnplmirlg.supabase.co";
+const SB_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind5eXFqbHd6cGhsaG5wbG1pcmxnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQyMTU0MDcsImV4cCI6MjA5OTc5MTQwN30.8TEY_BZAm7P9vwuU0Eh5jzw6rgzcPOpTXk_gBU5FQJc";
+const CHAVE_SESSAO = "sipep.session";
+
 const $ = (id) => document.getElementById(id);
 const moeda = (v) =>
   (v ?? 0).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -501,6 +506,8 @@ function render() {
   $("btn-anterior").disabled = estado.i === 0;
   $("btn-proxima").textContent =
     estado.i + 1 < total ? "Salvar e próxima" : "Salvar e finalizar";
+
+  carregarAnexos();
 }
 
 function salvarAtual() {
@@ -728,6 +735,179 @@ function baixar(blob, nome) {
   const a = document.createElement("a");
   a.href = url; a.download = nome; a.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+/* ------------------------------------------------------------------ anexos */
+/**
+ * Anexos (PDF, .msg etc.) de cada solicitação, guardados no Supabase.
+ * Usa a MESMA sessão que o login do NOCTUS grava em localStorage — este
+ * módulo não tem tela de login própria; se não houver sessão válida, só
+ * mostra um aviso pedindo para entrar no site principal.
+ */
+let anexosEstado = { chave: null, lista: [] };
+
+function sessaoAtual() {
+  const bruto = localStorage.getItem(CHAVE_SESSAO);
+  if (!bruto) return null;
+  try {
+    const s = JSON.parse(bruto);
+    if (!s.accessToken || !s.expiresAt || s.expiresAt < Date.now()) return null;
+    return s;
+  } catch {
+    return null;
+  }
+}
+
+const escAnexo = (t) =>
+  String(t ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+function tamanhoLegivel(bytes) {
+  if (!(bytes >= 0)) return "";
+  if (bytes < 1024) return bytes + " B";
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(0) + " KB";
+  return (bytes / (1024 * 1024)).toFixed(1) + " MB";
+}
+
+async function anexosFetch(caminho, opcoes = {}) {
+  const sessao = sessaoAtual();
+  if (!sessao) throw new Error("sem sessão");
+  const headers = Object.assign(
+    { apikey: SB_KEY, Authorization: "Bearer " + sessao.accessToken },
+    opcoes.headers || {}
+  );
+  return fetch(SB_URL + caminho, Object.assign({}, opcoes, { headers }));
+}
+
+async function listarAnexos(lote, sn) {
+  const q = `lote=eq.${encodeURIComponent(lote)}&sn=eq.${encodeURIComponent(sn)}`;
+  const r = await anexosFetch(
+    `/rest/v1/anexos_conferencia?${q}&select=id,nome,tipo,tamanho,caminho,criado_em&order=criado_em.asc`
+  );
+  if (!r.ok) throw new Error("não consegui listar os anexos");
+  return r.json();
+}
+
+async function subirAnexo(lote, sn, arquivo) {
+  const nomeSeguro = arquivo.name.replace(/[^A-Za-z0-9._-]+/g, "_");
+  const caminho = `${lote}/${sn}/${Date.now()}-${nomeSeguro}`;
+  const up = await anexosFetch(`/storage/v1/object/anexos-conferencia/${caminho}`, {
+    method: "POST",
+    headers: { "Content-Type": arquivo.type || "application/octet-stream" },
+    body: arquivo,
+  });
+  if (!up.ok) throw new Error("não consegui enviar o arquivo");
+  const ins = await anexosFetch(`/rest/v1/anexos_conferencia`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Prefer: "return=representation" },
+    body: JSON.stringify({
+      lote, sn, nome: arquivo.name, tipo: arquivo.type, tamanho: arquivo.size, caminho,
+    }),
+  });
+  if (!ins.ok) throw new Error("o arquivo foi enviado, mas não consegui salvar o registro dele");
+  return ins.json();
+}
+
+async function removerAnexo(anexo) {
+  await anexosFetch(`/storage/v1/object/anexos-conferencia/${anexo.caminho}`, { method: "DELETE" });
+  const del = await anexosFetch(`/rest/v1/anexos_conferencia?id=eq.${anexo.id}`, { method: "DELETE" });
+  if (!del.ok) throw new Error("não consegui remover o anexo");
+}
+
+async function baixarAnexo(anexo) {
+  const r = await anexosFetch(`/storage/v1/object/anexos-conferencia/${anexo.caminho}`);
+  if (!r.ok) throw new Error("não consegui baixar o anexo");
+  baixar(await r.blob(), anexo.nome);
+}
+
+function anexosAviso(texto, erro) {
+  const el = $("anexos-status");
+  if (!el) return;
+  el.textContent = texto || "";
+  el.classList.toggle("erro-texto", !!erro);
+}
+
+function renderAnexosLista(lista) {
+  const caixa = $("anexos-lista");
+  caixa.innerHTML = lista.length
+    ? lista.map((a) => `
+        <div class="anexo-item" data-id="${a.id}">
+          <span class="anexo-item__nome" title="${escAnexo(a.nome)}">${escAnexo(a.nome)}</span>
+          <span class="anexo-item__tam sub">${tamanhoLegivel(a.tamanho)}</span>
+          <button type="button" class="linkbtn anexo-item__baixar">Abrir</button>
+          <button type="button" class="anexo-item__remover" title="Remover anexo">✕</button>
+        </div>`).join("")
+    : `<div class="sub">Nenhum arquivo anexado ainda.</div>`;
+
+  caixa.querySelectorAll(".anexo-item__baixar").forEach((btn) => {
+    btn.onclick = () => {
+      const id = btn.closest(".anexo-item").dataset.id;
+      const a = lista.find((x) => String(x.id) === id);
+      if (!a) return;
+      btn.disabled = true;
+      baixarAnexo(a)
+        .catch((e) => anexosAviso(e.message, true))
+        .finally(() => { btn.disabled = false; });
+    };
+  });
+  caixa.querySelectorAll(".anexo-item__remover").forEach((btn) => {
+    btn.onclick = () => {
+      const id = btn.closest(".anexo-item").dataset.id;
+      const a = lista.find((x) => String(x.id) === id);
+      if (!a) return;
+      btn.disabled = true;
+      removerAnexo(a)
+        .then(() => carregarAnexos())
+        .catch((e) => { anexosAviso(e.message, true); btn.disabled = false; });
+    };
+  });
+}
+
+/** Recarrega a lista de anexos da solicitação atualmente aberta na revisão. */
+async function carregarAnexos() {
+  const s = estado.itens[estado.i];
+  if (!s) return;
+  const sessao = sessaoAtual();
+  const semLogin = $("anexos-sem-login"), area = $("anexos-area");
+  if (semLogin) semLogin.classList.toggle("oculto", !!sessao);
+  if (area) area.classList.toggle("oculto", !sessao);
+  if (!sessao) return;
+
+  const lote = chaveLote(estado.dados);
+  const minhaChave = `${lote}::${s.sn}`;
+  anexosEstado.chave = minhaChave;
+  $("anexos-lista").innerHTML = `<div class="sub">Carregando anexos…</div>`;
+  anexosAviso("", false);
+  try {
+    const lista = await listarAnexos(lote, s.sn);
+    if (anexosEstado.chave !== minhaChave) return; // já navegou para outra solicitação
+    anexosEstado.lista = lista;
+    renderAnexosLista(lista);
+  } catch {
+    if (anexosEstado.chave !== minhaChave) return;
+    $("anexos-lista").innerHTML = `<div class="sub">Não consegui carregar os anexos agora.</div>`;
+  }
+}
+
+function ligarAnexos() {
+  $("anexos-btn").onclick = () => $("anexos-input").click();
+  $("anexos-input").onchange = async () => {
+    const arquivo = $("anexos-input").files[0];
+    $("anexos-input").value = "";
+    if (!arquivo) return;
+    const s = estado.itens[estado.i];
+    const lote = chaveLote(estado.dados);
+    const minhaChave = `${lote}::${s.sn}`;
+    $("anexos-btn").disabled = true;
+    anexosAviso(`Enviando "${arquivo.name}"…`, false);
+    try {
+      await subirAnexo(lote, s.sn, arquivo);
+      if (anexosEstado.chave === minhaChave) { anexosAviso("", false); await carregarAnexos(); }
+    } catch (e) {
+      anexosAviso(`Não consegui anexar: ${e.message}`, true);
+    } finally {
+      $("anexos-btn").disabled = false;
+    }
+  };
 }
 
 /** Mostra um erro no lugar do bloco de pendência, sem alert() nativo. */
@@ -1213,4 +1393,5 @@ ligarConfig();
 ligarUpload();
 $("btn-planilha-geral").onclick = gerarPlanilhaGeral;
 ligarRevisao();
+ligarAnexos();
 ligarResumo();
