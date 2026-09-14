@@ -43,9 +43,6 @@ function candidatos(empresaCodigo, nomeTruncado) {
   });
 }
 
-const moeda = (v) =>
-  (v ?? 0).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-
 /**
  * Confere se o poder que o competente usou cobre o valor da solicitação.
  *
@@ -72,8 +69,6 @@ export function verificarPoder(empresaCodigo, competenteTexto, poderTexto, valor
   if (!otn || otn <= 0) return null;
   const limiteReais = comp.poderes[chave] * otn;
   if (valor > limiteReais + 0.005)
-    return `Valor R$ ${moeda(valor)} excede o limite do poder ${poderNum} do competente ` +
-           `${numComp} - ${comp.nome} (R$ ${moeda(limiteReais)} = ` +
-           `${moeda(comp.poderes[chave])} OTN × R$ ${moeda(otn)})`;
+    return `Valor excede o limite do poder ${poderNum} para o competente ${numComp} - ${comp.nome}`;
   return null;
 }
