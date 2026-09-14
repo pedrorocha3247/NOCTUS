@@ -79,6 +79,19 @@
         <textarea id="rev-parecer" placeholder="Seu parecer sobre esta solicitação"></textarea>
       </div>
 
+      <div class="campo">
+        <label>Anexos</label>
+        <div id="anexos-sem-login" class="sub oculto">
+          Faça login no <a href="../" target="_blank" rel="noopener">NOCTUS</a> para anexar arquivos.
+        </div>
+        <div id="anexos-area" class="oculto">
+          <div class="anexos-lista" id="anexos-lista"></div>
+          <input type="file" id="anexos-input" class="oculto" />
+          <button type="button" class="linkbtn" id="anexos-btn">+ Anexar arquivo</button>
+          <span class="sub anexos-status" id="anexos-status"></span>
+        </div>
+      </div>
+
       <div class="acoes">
         <div>
           <button class="botao fantasma" id="btn-anterior">Anterior</button>
