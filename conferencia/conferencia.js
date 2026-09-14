@@ -6,6 +6,7 @@
  */
 import * as pdfjsLib from "./vendor/pdf.min.mjs";
 import { parseRelatorio } from "./parser.js";
+import { verificarPoder } from "./poderes.js";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc =
   new URL("./vendor/pdf.worker.min.mjs", import.meta.url).href;
@@ -32,10 +33,18 @@ const STATUS_ANTIGOS = {
 const idDoStatus = (v) => (STATUS.find((s) => s.valor === v) || {}).id || "";
 const CHAVE = "noctus.conferencia";
 const CHAVE_ANTIGA = "sipep.conferencia";
+const CHAVE_OTN = "noctus.otn";
+const OTN_PADRAO = 130.30;
 
 const $ = (id) => document.getElementById(id);
 const moeda = (v) =>
   (v ?? 0).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+/** Valor do OTN usado pra converter o limite de poder (em OTN) para reais. */
+const otnAtual = () => {
+  const v = parseFloat(localStorage.getItem(CHAVE_OTN));
+  return isFinite(v) && v > 0 ? v : OTN_PADRAO;
+};
 
 let estado = { dados: null, itens: [], pareceres: {}, i: 0, mesclagem: null };
 
@@ -178,6 +187,7 @@ function carregar(chave, destino) {
   estado.pareceres = v.pareceres || {};
   estado.itens = ordenar(v.solicitacoes);
   estado.i = Math.min(v.i || 0, estado.itens.length - 1);
+  recalcularPoderes();   // o OTN pode ter mudado desde que este lote foi salvo
   irPara("revisao");
   render();
   // "Ver resumo" abre o relatório do dia direto; a tela de conferência fica
@@ -203,7 +213,7 @@ const feitos = () => estado.itens.filter((s) => estado.pareceres[s.sn]?.status).
  * para um clique só.
  */
 function irPara(tela) {
-  for (const t of ["upload", "revisao", "resumo"])
+  for (const t of ["upload", "revisao", "resumo", "config"])
     $("tela-" + t).classList.toggle("oculto", t !== tela);
   telaAtual = tela;
   const a = $("voltar-topo");
@@ -223,9 +233,79 @@ function ligarVoltar() {
   a.onclick = (e) => {
     if (telaAtual === "upload") return;   // deixa o link levar ao NOCTUS
     e.preventDefault();
+    if (telaAtual === "config") { fecharConfig(); return; }
     irPara("upload");
     renderRetomar();                      // os contadores mudaram desde que saiu daqui
   };
+}
+
+/* -------------------------------------------------------------------- configurações */
+/**
+ * Tela de configurações do módulo. Hoje só o OTN mora aqui, mas é o lugar de
+ * qualquer parâmetro que o conferente precise ajustar sem mexer no código.
+ */
+let telaAntesConfig = "upload";
+
+function abrirConfig() {
+  if (telaAtual !== "config") telaAntesConfig = telaAtual;
+  $("cfg-otn").value = otnAtual();
+  $("cfg-msg").innerHTML = "";
+  irPara("config");
+}
+
+/** Volta pra tela de onde as configurações foram abertas, já redesenhada. */
+function fecharConfig() {
+  const destino = telaAntesConfig;
+  irPara(destino);
+  if (destino === "upload") renderRetomar();
+  else if (destino === "resumo") mostrarResumo();
+  else if (estado.dados) render();
+}
+
+/**
+ * Recalcula o apontamento de poder de todas as solicitações com o OTN vigente.
+ *
+ * O apontamento fica em `alertaPoder`, separado dos `alertas` que vêm do
+ * parser: assim, quando o OTN muda, dá pra refazer só essa conta sem reler o
+ * PDF e sem duplicar apontamento nenhum.
+ */
+function recalcularPoderes() {
+  if (!estado.dados) return;
+  const otn = otnAtual();
+  for (const s of estado.dados.solicitacoes)
+    s.alertaPoder = verificarPoder(estado.dados.meta.empresaCodigo, s.competente,
+                                   s.poder, s.valor, otn);
+}
+
+function salvarOtn(v) {
+  if (!isFinite(v) || v <= 0) {
+    $("cfg-msg").innerHTML =
+      `<div class="alerta erro">Informe um valor de OTN maior que zero.</div>`;
+    return;
+  }
+  localStorage.setItem(CHAVE_OTN, String(v));
+  recalcularPoderes();
+  if (estado.dados) salvar();
+  $("cfg-otn").value = otnAtual();
+  $("cfg-msg").innerHTML =
+    `<div class="alerta ok">OTN atualizado para R$ ${moeda(otnAtual())}.
+      Os apontamentos de poder da conferência aberta foram recalculados.</div>`;
+}
+
+function ligarConfig() {
+  const abrir = $("btn-config");
+  if (abrir) abrir.onclick = () => abrirConfig();
+  $("cfg-salvar").onclick = () =>
+    salvarOtn(parseFloat(String($("cfg-otn").value).replace(",", ".")));
+  $("cfg-padrao").onclick = () => {
+    localStorage.removeItem(CHAVE_OTN);
+    recalcularPoderes();
+    if (estado.dados) salvar();
+    $("cfg-otn").value = otnAtual();
+    $("cfg-msg").innerHTML =
+      `<div class="alerta ok">OTN voltou ao padrão de R$ ${moeda(OTN_PADRAO)}.</div>`;
+  };
+  $("cfg-concluir").onclick = () => fecharConfig();
 }
 
 /* ------------------------------------------------------------------------ upload */
@@ -353,6 +433,7 @@ async function processar(arquivo) {
     estado.dados = dados;
     estado.itens = ordenar(dados.solicitacoes);
     estado.i = 0;
+    recalcularPoderes();
 
     if (salvo) {
       const r = mesclar(JSON.parse(salvo), dados);
@@ -402,7 +483,7 @@ function render() {
   $("rev-contador").textContent = `solicitação ${estado.i + 1} de ${total} · ${feitos()} conferidas`;
   $("rev-barra").style.width = (feitos() / total * 100).toFixed(1) + "%";
 
-  $("rev-alertas").innerHTML = (s.alertas || [])
+  $("rev-alertas").innerHTML = apontamentosLista(s)
     .map((a) => `<div class="alerta">${a}</div>`).join("");
 
   $("c-sn").textContent = s.sn;
@@ -461,10 +542,22 @@ function ligarRevisao() {
 
 /* ------------------------------------------------------------------------- resumo */
 const APONTADAS = "@apontadas";   // valor de filtro que não colide com nome de forma de pagamento
-const temApontamento = (s) => (s.alertas || []).length > 0;
-const apontamentosDe = (s) => (s.alertas || []).join(" · ");
+/** Apontamentos do parser + o de poder, que é recalculado quando o OTN muda. */
+const apontamentosLista = (s) =>
+  [...(s.alertas || []), ...(s.alertaPoder ? [s.alertaPoder] : [])];
+const temApontamento = (s) => apontamentosLista(s).length > 0;
+const apontamentosDe = (s) => apontamentosLista(s).join(" · ");
 
-let filtro = null;
+const SEM_STATUS = "Sem conferir";
+const statusDoItem = (s) => estado.pareceres[s.sn]?.status || SEM_STATUS;
+/** A linha de filtro por status fica recolhida ou não, por escolha do conferente. */
+const CHAVE_FILTRO_ST = "noctus.filtro-status";
+const filtroStatusAberto = () => localStorage.getItem(CHAVE_FILTRO_ST) !== "oculto";
+const CLASSE_STATUS = { Aprovado: "g", "Aguardando esclarecimentos": "b",
+                        Recusado: "v", [SEM_STATUS]: "n" };
+
+let filtro = null;         // forma de pagamento (ou apontadas)
+let filtroStatus = null;   // status do parecer, combinado com o filtro acima
 let ultimoAberto = null;   // cartão de onde o conferidor foi aberto
 
 function mostrarResumo() {
@@ -474,13 +567,9 @@ function mostrarResumo() {
     (estado.dados.meta.empresa ? " · " + estado.dados.meta.empresa : "");
 
   const contagem = Object.fromEntries(STATUS.map((s) => [s.valor, 0]));
-  contagem["Sem conferir"] = 0;
-  for (const s of estado.itens) {
-    const st = estado.pareceres[s.sn]?.status;
-    contagem[st in contagem ? st : "Sem conferir"]++;
-  }
-  const classe = { Aprovado: "g", "Aguardando esclarecimentos": "b",
-                   Recusado: "v", "Sem conferir": "n" };
+  contagem[SEM_STATUS] = 0;
+  for (const s of estado.itens) contagem[statusDoItem(s)]++;
+  const classe = CLASSE_STATUS;
   $("res-totais").innerHTML =
     `<div><span>Solicitações</span><b>${estado.itens.length}</b></div>
      <div><span>Valor total</span><b>R$ ${moeda(estado.dados.validacao.valorExtraido)}</b></div>`;
@@ -488,8 +577,8 @@ function mostrarResumo() {
     .map(([k, n]) => `<div class="status-card status-card--${classe[k]}">
         <b>${n}</b><span>${k}</span></div>`).join("");
 
-  $("res-pendencia").innerHTML = contagem["Sem conferir"]
-    ? `<div class="alerta">${contagem["Sem conferir"]} solicitação(ões) ainda sem status.</div>`
+  $("res-pendencia").innerHTML = contagem[SEM_STATUS]
+    ? `<div class="alerta">${contagem[SEM_STATUS]} solicitação(ões) ainda sem status.</div>`
     : `<div class="alerta ok">Todas as solicitações conferidas.</div>`;
 
   const apontadas = estado.itens.filter(temApontamento).length;
@@ -505,11 +594,40 @@ function mostrarResumo() {
     c.onclick = () => { filtro = c.dataset.t || null; mostrarResumo(); };
   });
 
-  const esc = (t) => String(t ?? "").replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
-  const visiveis = estado.itens.filter((s) =>
+  // Filtro de status: vale DENTRO da aba escolhida acima, com as contagens da
+  // própria aba. Sem aba nova — quem está olhando "TED" quer ver os recusados
+  // de TED, não trocar de lista.
+  const naAba = estado.itens.filter((s) =>
     filtro === APONTADAS ? temApontamento(s) : (!filtro || s.tipo === filtro));
+  const porStatus = {};
+  for (const s of naAba) porStatus[statusDoItem(s)] = (porStatus[statusDoItem(s)] || 0) + 1;
+  if (filtroStatus && !porStatus[filtroStatus]) filtroStatus = null;   // sumiu nesta aba
+  $("res-status-filtros").innerHTML = !filtroStatusAberto()
+    ? `<button type="button" class="linkbtn" data-abrir="1">filtrar por status</button>`
+    : [`<span class="chip-st ${filtroStatus ? "" : "on"}" data-s="">Todos os status</span>`]
+        .concat([...STATUS.map((s) => s.valor), SEM_STATUS]
+          .filter((n) => porStatus[n])
+          .map((n) => `<span class="chip-st chip-st--${classe[n]} ${filtroStatus === n ? "on" : ""}"
+            data-s="${n}">${n} <b>${porStatus[n]}</b></span>`))
+        .concat([`<button type="button" class="linkbtn" data-abrir="0">ocultar</button>`])
+        .join("");
+  $("res-status-filtros").querySelectorAll(".chip-st").forEach((c) => {
+    c.onclick = () => { filtroStatus = c.dataset.s || null; mostrarResumo(); };
+  });
+  $("res-status-filtros").querySelectorAll("[data-abrir]").forEach((b) => {
+    b.onclick = () => {
+      const abrir = b.dataset.abrir === "1";
+      localStorage.setItem(CHAVE_FILTRO_ST, abrir ? "aberto" : "oculto");
+      if (!abrir) filtroStatus = null;   // filtro escondido e ativo esconderia linha da lista
+      mostrarResumo();
+    };
+  });
+
+  const esc = (t) => String(t ?? "").replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+  const visiveis = naAba.filter((s) => !filtroStatus || statusDoItem(s) === filtroStatus);
   $("res-qtd").textContent = `· ${visiveis.length}` +
-    (filtro === APONTADAS ? " com apontamento" : filtro ? " em " + filtro : "");
+    (filtro === APONTADAS ? " com apontamento" : filtro ? " em " + filtro : "") +
+    (filtroStatus ? ` · ${filtroStatus.toLowerCase()}` : "");
   $("res-corpo").innerHTML = visiveis
     .map((s) => {
       const p = estado.pareceres[s.sn] || {};
@@ -1091,6 +1209,7 @@ async function gerarPlanilhaGeral() {
 /* ------------------------------------------------------------------------- início */
 migrarChaves();
 ligarVoltar();
+ligarConfig();
 ligarUpload();
 $("btn-planilha-geral").onclick = gerarPlanilhaGeral;
 ligarRevisao();
