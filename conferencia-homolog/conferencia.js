@@ -257,7 +257,7 @@ function abrirConfig() {
 function fecharConfig() {
   const destino = telaAntesConfig;
   irPara(destino);
-  if (destino === "upload") { renderOtnLinha(); renderRetomar(); }
+  if (destino === "upload") renderRetomar();
   else if (destino === "resumo") mostrarResumo();
   else if (estado.dados) render();
 }
@@ -309,18 +309,6 @@ function ligarConfig() {
 }
 
 /* ------------------------------------------------------------------------ upload */
-/**
- * Linha do OTN, usada pra converter os limites de poder (cadastrados em OTN
- * na Relação de Competentes e Poderes) para reais. Editável porque o valor
- * muda ao longo do tempo — hoje é 130,30, mas não dá pra deixar fixo no código.
- */
-function renderOtnLinha() {
-  $("otn-linha").innerHTML =
-    `Limites de poder calculados com OTN a <strong>R$ ${moeda(otnAtual())}</strong>
-     <button type="button" class="linkbtn" id="otn-editar">alterar</button>`;
-  $("otn-editar").onclick = () => abrirConfig();
-}
-
 function ligarUpload() {
   const solta = $("solta"), input = $("arquivo");
   solta.onclick = () => input.click();
@@ -562,6 +550,9 @@ const apontamentosDe = (s) => apontamentosLista(s).join(" · ");
 
 const SEM_STATUS = "Sem conferir";
 const statusDoItem = (s) => estado.pareceres[s.sn]?.status || SEM_STATUS;
+/** A linha de filtro por status fica recolhida ou não, por escolha do conferente. */
+const CHAVE_FILTRO_ST = "noctus.filtro-status";
+const filtroStatusAberto = () => localStorage.getItem(CHAVE_FILTRO_ST) !== "oculto";
 const CLASSE_STATUS = { Aprovado: "g", "Aguardando esclarecimentos": "b",
                         Recusado: "v", [SEM_STATUS]: "n" };
 
@@ -611,15 +602,25 @@ function mostrarResumo() {
   const porStatus = {};
   for (const s of naAba) porStatus[statusDoItem(s)] = (porStatus[statusDoItem(s)] || 0) + 1;
   if (filtroStatus && !porStatus[filtroStatus]) filtroStatus = null;   // sumiu nesta aba
-  $("res-status-filtros").innerHTML =
-    [`<span class="chip-st ${filtroStatus ? "" : "on"}" data-s="">Todos os status</span>`]
-      .concat([...STATUS.map((s) => s.valor), SEM_STATUS]
-        .filter((n) => porStatus[n])
-        .map((n) => `<span class="chip-st chip-st--${classe[n]} ${filtroStatus === n ? "on" : ""}"
-          data-s="${n}">${n} <b>${porStatus[n]}</b></span>`))
-      .join("");
+  $("res-status-filtros").innerHTML = !filtroStatusAberto()
+    ? `<button type="button" class="linkbtn" data-abrir="1">filtrar por status</button>`
+    : [`<span class="chip-st ${filtroStatus ? "" : "on"}" data-s="">Todos os status</span>`]
+        .concat([...STATUS.map((s) => s.valor), SEM_STATUS]
+          .filter((n) => porStatus[n])
+          .map((n) => `<span class="chip-st chip-st--${classe[n]} ${filtroStatus === n ? "on" : ""}"
+            data-s="${n}">${n} <b>${porStatus[n]}</b></span>`))
+        .concat([`<button type="button" class="linkbtn" data-abrir="0">ocultar</button>`])
+        .join("");
   $("res-status-filtros").querySelectorAll(".chip-st").forEach((c) => {
     c.onclick = () => { filtroStatus = c.dataset.s || null; mostrarResumo(); };
+  });
+  $("res-status-filtros").querySelectorAll("[data-abrir]").forEach((b) => {
+    b.onclick = () => {
+      const abrir = b.dataset.abrir === "1";
+      localStorage.setItem(CHAVE_FILTRO_ST, abrir ? "aberto" : "oculto");
+      if (!abrir) filtroStatus = null;   // filtro escondido e ativo esconderia linha da lista
+      mostrarResumo();
+    };
   });
 
   const esc = (t) => String(t ?? "").replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
@@ -1209,7 +1210,6 @@ async function gerarPlanilhaGeral() {
 migrarChaves();
 ligarVoltar();
 ligarConfig();
-renderOtnLinha();
 ligarUpload();
 $("btn-planilha-geral").onclick = gerarPlanilhaGeral;
 ligarRevisao();
