@@ -69,6 +69,16 @@ const codEmpresa = (meta) => {
 const nomeEmpresa = (meta) =>
   meta?.empresa || meta?.empresaNome || "Empresa não identificada";
 
+/**
+ * Chave "base" da conferência (sem usuário): identifica a conferência pelo
+ * documento em si (data + empresa). Usada pelos anexos, que pertencem à
+ * solicitação, não a quem está conferindo — não pode depender de login.
+ */
+const chaveLoteBase = (d) =>
+  `${CHAVE}.${(d.meta.dataInicio || "sem-data").replace(/\//g, "-")}.e${codEmpresa(d.meta)}`;
+
+/** Chave da conferência COM escopo de usuário — usada só para o progresso
+ *  (pareceres) salvo neste navegador, que é isolado por pessoa. */
 const chaveLote = (d) =>
   `${CHAVE}.${escopoUsuario()}.${(d.meta.dataInicio || "sem-data").replace(/\//g, "-")}.e${codEmpresa(d.meta)}`;
 
@@ -288,12 +298,17 @@ function fecharConfig() {
  * parser: assim, quando o OTN muda, dá pra refazer só essa conta sem reler o
  * PDF e sem duplicar apontamento nenhum.
  */
+const LIMITE_OTN_UNICO = 10;
+
 function recalcularPoderes() {
   if (!estado.dados) return;
   const otn = otnAtual();
-  for (const s of estado.dados.solicitacoes)
+  for (const s of estado.dados.solicitacoes) {
     s.alertaPoder = verificarPoder(estado.dados.meta.empresaCodigo, s.competente,
                                    s.poder, s.valor, otn);
+    s.alerta10otn = s.valor > otn * LIMITE_OTN_UNICO
+      ? "Solicitação ultrapassa a 10 OTN" : null;
+  }
 }
 
 function salvarOtn(v) {
@@ -592,7 +607,8 @@ function ligarRevisao() {
 const APONTADAS = "@apontadas";   // valor de filtro que não colide com nome de forma de pagamento
 /** Apontamentos do parser + o de poder, que é recalculado quando o OTN muda. */
 const apontamentosLista = (s) =>
-  [...(s.alertas || []), ...(s.alertaPoder ? [s.alertaPoder] : [])];
+  [...(s.alertas || []), ...(s.alertaPoder ? [s.alertaPoder] : []),
+   ...(s.alerta10otn ? [s.alerta10otn] : [])];
 
 /**
  * Apontamentos automáticos que o conferente removeu manualmente desta solicitação
@@ -604,6 +620,14 @@ const apontamentosVisiveis = (s) =>
   apontamentosLista(s).filter((a) => !alertasOcultosDe(s.sn).includes(a));
 const temApontamento = (s) => apontamentosVisiveis(s).length > 0;
 const apontamentosDe = (s) => apontamentosVisiveis(s).join(" · ");
+/**
+ * true se o sistema já gerou algum apontamento pra esta solicitação, mesmo
+ * que o conferente tenha removido todos depois. Usado só no filtro "com
+ * apontamento" do resumo, pra ainda ser possível localizar essas solicitações
+ * — o texto do apontamento em si continua sumindo de tudo o mais quando
+ * removido (tela, planilha, impresso).
+ */
+const temApontamentoOriginal = (s) => apontamentosLista(s).length > 0;
 
 function ocultarApontamento(sn, texto) {
   const p = estado.pareceres[sn] || { status: "", parecer: "" };
@@ -653,7 +677,7 @@ function mostrarResumo() {
     ? `<div class="alerta">${contagem[SEM_STATUS]} solicitação(ões) ainda sem status.</div>`
     : `<div class="alerta ok">Todas as solicitações conferidas.</div>`;
 
-  const apontadas = estado.itens.filter(temApontamento).length;
+  const apontadas = estado.itens.filter(temApontamentoOriginal).length;
   $("res-filtros").innerHTML =
     [`<span class="chip ${filtro ? "" : "on"}" data-t="">Todas</span>`]
       .concat(ORDEM.filter((t) => estado.itens.some((s) => s.tipo === t))
@@ -670,7 +694,7 @@ function mostrarResumo() {
   // própria aba. Sem aba nova — quem está olhando "TED" quer ver os recusados
   // de TED, não trocar de lista.
   const naAba = estado.itens.filter((s) =>
-    filtro === APONTADAS ? temApontamento(s) : (!filtro || s.tipo === filtro));
+    filtro === APONTADAS ? temApontamentoOriginal(s) : (!filtro || s.tipo === filtro));
   const porStatus = {};
   for (const s of naAba) porStatus[statusDoItem(s)] = (porStatus[statusDoItem(s)] || 0) + 1;
   if (filtroStatus && !porStatus[filtroStatus]) filtroStatus = null;   // sumiu nesta aba
@@ -959,7 +983,7 @@ async function carregarAnexos() {
   if (area) area.classList.toggle("oculto", !sessao);
   if (!sessao) return;
 
-  const lote = chaveLote(estado.dados);
+  const lote = chaveLoteBase(estado.dados);
   const minhaChave = `${lote}::${s.sn}`;
   anexosEstado.chave = minhaChave;
   $("anexos-lista").innerHTML = `<div class="sub">Carregando anexos…</div>`;
@@ -982,7 +1006,7 @@ function ligarAnexos() {
     $("anexos-input").value = "";
     if (!arquivo) return;
     const s = estado.itens[estado.i];
-    const lote = chaveLote(estado.dados);
+    const lote = chaveLoteBase(estado.dados);
     const minhaChave = `${lote}::${s.sn}`;
     $("anexos-btn").disabled = true;
     anexosAviso(`Enviando "${arquivo.name}"…`, false);
@@ -1483,3 +1507,4 @@ $("btn-planilha-geral").onclick = gerarPlanilhaGeral;
 ligarRevisao();
 ligarAnexos();
 ligarResumo();
+if (new URLSearchParams(location.search).get("config") === "1") abrirConfig();
