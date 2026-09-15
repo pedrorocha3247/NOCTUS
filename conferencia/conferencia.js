@@ -1068,9 +1068,9 @@ function abaSolicitacoes(wb, nome, itens, comTipo) {
     { header: "Valor (R$)", key: "valor" },
     { header: "Favorecido", key: "favorecido" },
     { header: "Destinação", key: "destinacao" },
-    { header: "Apontamentos", key: "apontamentos" },
     { header: "Status", key: "status" },
     { header: "Parecer", key: "parecer" },
+    { header: "Apontamentos", key: "apontamentos" },
   ];
   ws.columns = colunas;
 
@@ -1319,9 +1319,9 @@ const COLUNAS_GERAL = [
   { header: "Valor (R$)", key: "valor", width: 14 },
   { header: "Favorecido", key: "favorecido", width: 38 },
   { header: "Destinação", key: "destinacao", width: 54 },
-  { header: "Apontamentos", key: "apontamentos", width: 38 },
   { header: "Status", key: "status", width: 24 },
   { header: "Parecer", key: "parecer", width: 44 },
+  { header: "Apontamentos", key: "apontamentos", width: 38 },
 ];
 
 function abaGeral(wb, nome, linhas) {
