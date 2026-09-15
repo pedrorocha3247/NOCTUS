@@ -166,9 +166,10 @@ function migrarChaves() {
       }
       if (mudou) localStorage.setItem(chave, JSON.stringify(v));
     }
-    // conferências salvas antes do cadastro por usuário: passam a pertencer a quem
-    // estiver logado quando a migração rodar (cada usuário novo começa sem nada).
-    if (sessaoAtual()) {
+    // conferências salvas antes do cadastro por usuário: passam a pertencer ao admin
+    // (único usuário que existia antes) na primeira vez que ele abrir o módulo depois
+    // desta atualização. Um usuário novo cadastrado nunca herda essas conferências.
+    if (ehAdmin()) {
       for (const chave of Object.keys(localStorage)) {
         const m = chave.match(new RegExp(`^${CHAVE}\\.(\\d{2}-\\d{2}-\\d{4})\\.e(.+)$`));
         if (!m) continue;
