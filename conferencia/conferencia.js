@@ -70,7 +70,7 @@ const nomeEmpresa = (meta) =>
   meta?.empresa || meta?.empresaNome || "Empresa não identificada";
 
 const chaveLote = (d) =>
-  `${CHAVE}.${(d.meta.dataInicio || "sem-data").replace(/\//g, "-")}.e${codEmpresa(d.meta)}`;
+  `${CHAVE}.${escopoUsuario()}.${(d.meta.dataInicio || "sem-data").replace(/\//g, "-")}.e${codEmpresa(d.meta)}`;
 
 /** Campos cuja alteração invalida um parecer já dado. */
 const assinatura = (s) => [s.tipo, s.valor, s.favorecido, s.cpfCnpj, s.destinacao,
@@ -166,14 +166,26 @@ function migrarChaves() {
       }
       if (mudou) localStorage.setItem(chave, JSON.stringify(v));
     }
+    // conferências salvas antes do cadastro por usuário: passam a pertencer a quem
+    // estiver logado quando a migração rodar (cada usuário novo começa sem nada).
+    if (sessaoAtual()) {
+      for (const chave of Object.keys(localStorage)) {
+        const m = chave.match(new RegExp(`^${CHAVE}\\.(\\d{2}-\\d{2}-\\d{4})\\.e(.+)$`));
+        if (!m) continue;
+        const destino = `${CHAVE}.${escopoUsuario()}.${m[1]}.e${m[2]}`;
+        if (!localStorage.getItem(destino)) localStorage.setItem(destino, localStorage.getItem(chave));
+        localStorage.removeItem(chave);
+      }
+    }
   } catch (e) { /* modo privado ou entrada corrompida: segue sem migrar */ }
 }
 
 function lotesSalvos() {
   const out = [];
+  const prefixo = `${CHAVE}.${escopoUsuario()}.`;
   for (let k = 0; k < localStorage.length; k++) {
     const chave = localStorage.key(k);
-    if (!chave || !chave.startsWith(CHAVE + ".")) continue;
+    if (!chave || !chave.startsWith(prefixo)) continue;
     try {
       const v = JSON.parse(localStorage.getItem(chave));
       out.push({ chave, meta: v.meta, data: v.meta?.dataInicio || "sem data",
@@ -252,6 +264,7 @@ function ligarVoltar() {
 let telaAntesConfig = "upload";
 
 function abrirConfig() {
+  if (!ehAdmin()) return;
   if (telaAtual !== "config") telaAntesConfig = telaAtual;
   $("cfg-otn").value = otnAtual();
   $("cfg-msg").innerHTML = "";
@@ -299,7 +312,10 @@ function salvarOtn(v) {
 
 function ligarConfig() {
   const abrir = $("btn-config");
-  if (abrir) abrir.onclick = () => abrirConfig();
+  if (abrir) {
+    if (!ehAdmin()) abrir.style.display = "none";
+    else abrir.onclick = () => abrirConfig();
+  }
   $("cfg-salvar").onclick = () =>
     salvarOtn(parseFloat(String($("cfg-otn").value).replace(",", ".")));
   $("cfg-padrao").onclick = () => {
@@ -806,6 +822,28 @@ function sessaoAtual() {
   }
 }
 
+/** Usuário logado (mesma sessão do painel principal), ou null se ninguém entrou. */
+function usuarioAtual() {
+  return sessaoAtual()?.user || null;
+}
+
+/** true só para quem tem o papel "admin" (hoje: só o usuário fixo original). */
+function ehAdmin() {
+  const u = usuarioAtual();
+  return !!u && Array.isArray(u.roles) && u.roles.includes("admin");
+}
+
+/**
+ * Identificador do usuário atual pra separar os dados de cada um no localStorage
+ * (cada conferente só vê e mexe nas próprias conferências em andamento). Sem
+ * sessão, cai num escopo fixo — mesmo comportamento de antes do cadastro existir.
+ */
+function escopoUsuario() {
+  const u = usuarioAtual();
+  const base = String(u?.username || u?.id || "sem-login").trim().toLowerCase();
+  return base.replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) || "sem-login";
+}
+
 const escAnexo = (t) =>
   String(t ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
@@ -1203,9 +1241,10 @@ async function gerarPlanilha() {
  */
 function consolidarLotes() {
   const lotes = [];
+  const prefixo = `${CHAVE}.${escopoUsuario()}.`;
   for (let k = 0; k < localStorage.length; k++) {
     const chave = localStorage.key(k);
-    if (!chave || !chave.startsWith(CHAVE + ".")) continue;
+    if (!chave || !chave.startsWith(prefixo)) continue;
     try {
       const v = JSON.parse(localStorage.getItem(chave));
       if (!Array.isArray(v.solicitacoes)) continue;
