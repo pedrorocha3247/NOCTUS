@@ -273,6 +273,9 @@ function ligarVoltar() {
  * qualquer parâmetro que o conferente precise ajustar sem mexer no código.
  */
 let telaAntesConfig = "upload";
+/** true quando as Configurações foram abertas direto da tela inicial do NOCTUS
+ *  (botão Configurações no painel), não de dentro do módulo. */
+let configAbertaViaHome = false;
 
 function abrirConfig() {
   if (!ehAdmin()) return;
@@ -280,10 +283,19 @@ function abrirConfig() {
   $("cfg-otn").value = otnAtual();
   $("cfg-msg").innerHTML = "";
   irPara("config");
+  if (configAbertaViaHome) {
+    const a = $("voltar-topo");
+    if (a) { a.textContent = "Voltar"; a.title = "Voltar para o NOCTUS"; }
+  }
 }
 
-/** Volta pra tela de onde as configurações foram abertas, já redesenhada. */
+/**
+ * Volta pra tela de onde as configurações foram abertas, já redesenhada — ou,
+ * se vieram direto da tela inicial do NOCTUS, volta pra lá em vez de cair
+ * dentro do módulo.
+ */
 function fecharConfig() {
+  if (configAbertaViaHome) { window.location.href = "../#/"; return; }
   const destino = telaAntesConfig;
   irPara(destino);
   if (destino === "upload") renderRetomar();
@@ -1507,4 +1519,7 @@ $("btn-planilha-geral").onclick = gerarPlanilhaGeral;
 ligarRevisao();
 ligarAnexos();
 ligarResumo();
-if (new URLSearchParams(location.search).get("config") === "1") abrirConfig();
+if (new URLSearchParams(location.search).get("config") === "1") {
+  configAbertaViaHome = true;
+  abrirConfig();
+}
