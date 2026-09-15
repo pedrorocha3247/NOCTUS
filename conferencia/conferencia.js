@@ -544,8 +544,7 @@ function render() {
       </div>`).join("") +
     (ocultosApont.length
       ? `<div class="sub apont-ocultos">
-           ${ocultosApont.length} apontamento(s) removido(s) desta solicitação.
-           <button type="button" class="linkbtn" id="btn-restaurar-apont">Restaurar</button>
+           <button type="button" class="linkbtn" id="btn-restaurar-apont">Restaurar Observação</button>
          </div>`
       : "");
   $("rev-alertas").querySelectorAll("[data-remover-apont]").forEach((btn, i) => {
