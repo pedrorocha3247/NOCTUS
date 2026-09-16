@@ -213,7 +213,7 @@ function carregar(chave, destino) {
   const v = JSON.parse(localStorage.getItem(chave));
   estado.dados = { meta: v.meta, validacao: v.validacao, solicitacoes: v.solicitacoes };
   estado.pareceres = v.pareceres || {};
-  estado.itens = ordenar(v.solicitacoes);
+  estado.itens = ordenar(v.solicitacoes, estado.pareceres);
   estado.i = Math.min(v.i || 0, estado.itens.length - 1);
   recalcularPoderes();   // o OTN pode ter mudado desde que este lote foi salvo
   irPara("revisao");
@@ -224,11 +224,22 @@ function carregar(chave, destino) {
 }
 
 /* ------------------------------------------------------------------- utilidades */
-const ordenar = (ss) =>
-  [...ss].sort((a, b) => {
+/**
+ * Ordena pela forma de pagamento e valor (ordem "natural" da conferência) e,
+ * quando `pareceres` é informado, faz um segundo passe estável que empurra as
+ * solicitações ainda sem parecer para depois das já conferidas — sem misturar
+ * uma coisa com a outra. Sort é estável, então esse segundo passe preserva a
+ * ordem natural dentro de cada grupo (conferidas / pendentes).
+ */
+const ordenar = (ss, pareceres) => {
+  const base = [...ss].sort((a, b) => {
     const ta = ORDEM.indexOf(a.tipo), tb = ORDEM.indexOf(b.tipo);
     return (ta < 0 ? 99 : ta) - (tb < 0 ? 99 : tb) || (b.valor || 0) - (a.valor || 0);
   });
+  if (!pareceres) return base;
+  const pendente = (s) => (pareceres[s.sn]?.status ? 0 : 1);
+  return base.sort((a, b) => pendente(a) - pendente(b));
+};
 
 const feitos = () => estado.itens.filter((s) => estado.pareceres[s.sn]?.status).length;
 
@@ -480,7 +491,6 @@ async function processar(arquivo) {
     msg.innerHTML = "";
     const salvo = localStorage.getItem(chaveLote(dados));
     estado.dados = dados;
-    estado.itens = ordenar(dados.solicitacoes);
     estado.i = 0;
     recalcularPoderes();
 
@@ -492,6 +502,9 @@ async function processar(arquivo) {
       estado.pareceres = {};
       estado.mesclagem = null;
     }
+    // com os pareceres já mesclados: os ainda pendentes ficam depois dos já
+    // conferidos, sem se misturar entre eles.
+    estado.itens = ordenar(dados.solicitacoes, estado.pareceres);
     salvar();
     irPara("revisao");
     render();
