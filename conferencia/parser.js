@@ -15,7 +15,17 @@ const COLUNAS = {
       ["competente",186,240],["poder",240,270],["cpfCnpj",270,336],
       ["favorecido",336,458],["destinacao",458,615],["complemento",615,760],
       ["poderDispendio",760,9999]],
-  B: [["sn",0,50],["filial",45,85],["valor",85,123],["solicitante",123,176],
+  // O corte entre FILIAL e VALOR na família B ficava em x=85, colado no início
+  // real do valor (x≈84,2) quando o valor tem 7 dígitos inteiros (>= R$
+  // 1.000.000,00) — a coluna é alinhada à direita, então um valor mais largo
+  // "nasce" mais à esquerda. Nesse caso o texto do valor caía inteiro na
+  // coluna FILIAL, o campo VALOR ficava vazio (null) e a solicitação era
+  // contada na quantidade mas somava zero — foi o que fez o relatório de
+  // 18/09/2026 (BOLETO de R$ 1.016.008,01) não bater no valor total mesmo com
+  // a quantidade de solicitações correta. "MATRIZ" termina em x≈77,2, então
+  // baixar o corte para 80 dá margem para valores de até 8 dígitos inteiros
+  // sem invadir a coluna FILIAL.
+  B: [["sn",0,50],["filial",45,80],["valor",80,123],["solicitante",123,176],
       ["competente",176,235],["poder",235,262],["cpfCnpj",262,324],
       ["favorecido",324,430],["destinacao",430,620],["complemento",620,770],
       ["poderDispendio",770,9999]],
