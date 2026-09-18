@@ -871,6 +871,69 @@ function sessaoAtual() {
   }
 }
 
+/**
+ * Renova a sessão de login usando o refreshToken salvo (mesmo grant_type que
+ * o painel principal usa). Só é chamada de perto do vencimento do token e com
+ * o conferente ativo — ver ligarRenovacaoDeSessao().
+ */
+async function renovarSessao() {
+  const bruto = localStorage.getItem(CHAVE_SESSAO);
+  if (!bruto) return null;
+  let s;
+  try {
+    s = JSON.parse(bruto);
+  } catch {
+    return null;
+  }
+  if (!s.refreshToken) return null;
+  let resp;
+  try {
+    resp = await fetch(SB_URL + "/auth/v1/token?grant_type=refresh_token", {
+      method: "POST",
+      headers: { apikey: SB_KEY, "Content-Type": "application/json" },
+      body: JSON.stringify({ refresh_token: s.refreshToken }),
+    });
+  } catch {
+    return null;
+  }
+  const dados = await resp.json().catch(() => ({}));
+  if (!resp.ok || !dados.access_token) return null;
+  const nova = {
+    user: s.user,
+    accessToken: dados.access_token,
+    refreshToken: dados.refresh_token || s.refreshToken,
+    expiresAt: Date.now() + (dados.expires_in || 3600) * 1000,
+  };
+  localStorage.setItem(CHAVE_SESSAO, JSON.stringify(nova));
+  return nova;
+}
+
+/**
+ * Mantém a sessão viva enquanto o conferente está usando o módulo: renova
+ * pouco antes do token vencer, mas só se houve atividade recente. Depois de
+ * LIMITE_INATIVIDADE sem clique/tecla/scroll, para de renovar e deixa a
+ * sessão expirar no prazo normal — não mantém a sessão viva pra sempre com a
+ * aba esquecida aberta e sem uso.
+ */
+function ligarRenovacaoDeSessao() {
+  let ultimaAtividade = Date.now();
+  const marcar = () => { ultimaAtividade = Date.now(); };
+  ["click", "keydown", "mousemove", "scroll", "touchstart"].forEach((ev) =>
+    window.addEventListener(ev, marcar, { passive: true }));
+
+  const LIMITE_INATIVIDADE = 60 * 60 * 1000; // 60min sem atividade: para de renovar
+  const MARGEM_RENOVACAO = 5 * 60 * 1000;    // renova quando faltar menos de 5min
+  const INTERVALO = 60 * 1000;               // confere a cada 1min
+
+  setInterval(async () => {
+    const s = sessaoAtual();
+    if (!s) return;
+    if (Date.now() - ultimaAtividade > LIMITE_INATIVIDADE) return;
+    if (s.expiresAt - Date.now() > MARGEM_RENOVACAO) return;
+    await renovarSessao();
+  }, INTERVALO);
+}
+
 /** Usuário logado (mesma sessão do painel principal), ou null se ninguém entrou. */
 function usuarioAtual() {
   return sessaoAtual()?.user || null;
@@ -1531,6 +1594,7 @@ $("btn-planilha-geral").onclick = gerarPlanilhaGeral;
 ligarRevisao();
 ligarAnexos();
 ligarResumo();
+ligarRenovacaoDeSessao();
 if (new URLSearchParams(location.search).get("config") === "1") {
   configAbertaViaHome = true;
   abrirConfig();
