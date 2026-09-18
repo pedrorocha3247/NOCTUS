@@ -33,7 +33,17 @@ const COLUNAS = {
 const TIPOS = ["TRANSFERÊNCIA BANCÁRIA CONTA CORRENTE","TED","DÉBITO EM CONTA","PIX","BOLETO"];
 const TIPO_CURTO = {"TRANSFERÊNCIA BANCÁRIA CONTA CORRENTE":"TRANSFERÊNCIA"};
 const RUIDO = ["Total ==>","Página","Filial:","SOLICITAÇÕES DE","DDP -"];
-const RE_TOTAL = /Total ==>\s+(\d+)\s+Solicitação\(ões\)\s+R\$\s+([\d.,]+)/;
+const RE_TOTAL = /Total ==>\s+([\d.]+)\s+Solicitação\(ões\)\s+R\$\s+([\d.,]+)/;
+
+// Cabeçalho de seção por banco: "<NOME DO BANCO OU FAVORECIDO> Ag. <cod> - C/C <cod>".
+// Nem todo cabeçalho começa com a palavra "BANCO" — em relatórios de mais de um
+// dia aparecem seções cujo "banco" é na verdade um favorecido recorrente, como
+// "MERCADOPAGO.COM REPRESENTACOES LTDA Ag. 0001 - C/C 67953790764". Exigir
+// "BANCO " no início fazia essas seções nunca fecharem o bloco anterior, e os
+// totais de duas seções distintas eram somados como se fossem uma só — foi o
+// que impediu a validação de bater no relatório de 01 a 18/09/2026 (a seção do
+// Santander seguida da do MercadoPago, nas páginas finais, virava um bloco só).
+const ehCabecalhoBanco = (t) => t.includes("Ag.") && t.includes("C/C");
 
 const coluna = (fam, x) => (COLUNAS[fam].find(([, i, f]) => x >= i && x < f) || ["poderDispendio"])[0];
 const num = (t) => { const v = parseFloat(String(t).replace(/\./g, "").replace(",", ".")); return isNaN(v) ? null : v; };
@@ -111,13 +121,13 @@ export async function parseRelatorio(arrayBuffer, pdfjsLib) {
     // passe tolerante: fecha blocos por banco e lê os totais impressos
     for (const L of agruparTolerante(palavras, 3)) {
       const texto = L.trim();
-      if (texto.startsWith("BANCO ") && (texto.includes("Ag.") || texto.includes("C/C"))) {
+      if (ehCabecalhoBanco(texto)) {
         if (blocoAtual.length) blocos.push(blocoAtual);
         blocoAtual = [];
         continue;
       }
       const mt = texto.match(RE_TOTAL);
-      if (mt) blocoAtual.push([parseInt(mt[1], 10), num(mt[2])]);
+      if (mt) blocoAtual.push([parseInt(mt[1].replace(/\./g, ""), 10), num(mt[2])]);
     }
 
     const linhas = agruparLinhas(palavras);
@@ -143,7 +153,7 @@ export async function parseRelatorio(arrayBuffer, pdfjsLib) {
       }
       if (!meta.emitidoEm && /^\d{2}:\d{2}:\d{2}$/.test(L)) meta.emitidoEm = L;
 
-      if (L.startsWith("BANCO ") && (L.includes("Ag.") || L.includes("C/C"))) {
+      if (ehCabecalhoBanco(L)) {
         banco = L; ignorar.add(y);
         continue;
       }
