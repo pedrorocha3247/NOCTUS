@@ -70,6 +70,18 @@ const nomeEmpresa = (meta) =>
   meta?.empresa || meta?.empresaNome || "Empresa não identificada";
 
 /**
+ * Texto do período do relatório: "01/09/2026" para um relatório de um dia só,
+ * "01/09/2026 a 18/09/2026" quando o relatório cobre vários dias (dataFim
+ * diferente de dataInicio). Antes disso só dataInicio era mostrado em toda
+ * parte — para um relatório de um dia só isso já era o período inteiro, mas
+ * num relatório de várias semanas escondia os outros dias do usuário.
+ */
+const textoPeriodo = (meta) =>
+  meta?.dataFim && meta.dataFim !== meta.dataInicio
+    ? `${meta.dataInicio || ""} a ${meta.dataFim}`
+    : (meta?.dataInicio || "");
+
+/**
  * Chave "base" da conferência (sem usuário): identifica a conferência pelo
  * documento em si (data + empresa). Usada pelos anexos, que pertencem à
  * solicitação, não a quem está conferindo — não pode depender de login.
@@ -683,7 +695,7 @@ let ultimoAberto = null;   // cartão de onde o conferidor foi aberto
 function mostrarResumo() {
   irPara("resumo");
   $("res-data").textContent =
-    "· " + (estado.dados.meta.dataInicio || "") +
+    "· " + textoPeriodo(estado.dados.meta) +
     (estado.dados.meta.empresa ? " · " + estado.dados.meta.empresa : "");
 
   const contagem = Object.fromEntries(STATUS.map((s) => [s.valor, 0]));
@@ -1141,9 +1153,11 @@ function abaSolicitacoes(wb, nome, itens, comTipo) {
   const colunas = [
     { header: "S.N", key: "sn" },
     ...(comTipo ? [{ header: "Tipo", key: "tipo" }] : []),
-    { header: "Valor (R$)", key: "valor" },
+    { header: "Solicitante", key: "solicitante" },
+    { header: "Competente", key: "competente" },
     { header: "Favorecido", key: "favorecido" },
     { header: "Destinação", key: "destinacao" },
+    { header: "Valor (R$)", key: "valor" },
     { header: "Status", key: "status" },
     { header: "Parecer", key: "parecer" },
     { header: "Apontamentos", key: "apontamentos" },
@@ -1152,8 +1166,8 @@ function abaSolicitacoes(wb, nome, itens, comTipo) {
 
   for (const s of itens) {
     ws.addRow({
-      sn: s.sn, tipo: s.tipo, valor: s.valor,
-      favorecido: s.favorecido, destinacao: s.destinacao,
+      sn: s.sn, tipo: s.tipo, solicitante: s.solicitante, competente: s.competente,
+      valor: s.valor, favorecido: s.favorecido, destinacao: s.destinacao,
       apontamentos: apontamentosDe(s),
       status: statusNaPlanilha(s.sn), parecer: parecerDe(s.sn),
     });
@@ -1161,16 +1175,19 @@ function abaSolicitacoes(wb, nome, itens, comTipo) {
 
   // largura pelo conteúdo; as colunas longas quebram linha e o Excel ajusta a altura
   const w = (k, min, max) => largura(itens.map((s) => ({
-    sn: s.sn, tipo: s.tipo, valor: moeda(s.valor), favorecido: s.favorecido,
+    sn: s.sn, tipo: s.tipo, solicitante: s.solicitante, competente: s.competente,
+    valor: moeda(s.valor), favorecido: s.favorecido,
     destinacao: s.destinacao, apontamentos: apontamentosDe(s),
     status: statusNaPlanilha(s.sn), parecer: parecerDe(s.sn),
   }[k])).concat(colunas.find((c) => c.key === k).header), min, max);
 
   ws.getColumn("sn").width = w("sn", 10, 14);
   if (comTipo) ws.getColumn("tipo").width = w("tipo", 14, 22);
-  ws.getColumn("valor").width = 14;
+  ws.getColumn("solicitante").width = w("solicitante", 16, 28);
+  ws.getColumn("competente").width = w("competente", 16, 28);
   ws.getColumn("favorecido").width = w("favorecido", 22, 42);
   ws.getColumn("destinacao").width = 58;
+  ws.getColumn("valor").width = 14;
   ws.getColumn("apontamentos").width = 38;
   ws.getColumn("status").width = 27;
   ws.getColumn("parecer").width = 46;
@@ -1186,7 +1203,7 @@ function abaSolicitacoes(wb, nome, itens, comTipo) {
     });
     linha.getCell("valor").numFmt = "#,##0.00";
     linha.getCell("valor").alignment = { vertical: "top", horizontal: "right" };
-    for (const k of ["favorecido", "destinacao", "apontamentos", "parecer"]) {
+    for (const k of ["solicitante", "competente", "favorecido", "destinacao", "apontamentos", "parecer"]) {
       linha.getCell(k).alignment = { vertical: "top", wrapText: true };
     }
     // o apontamento é do sistema, não do conferente: fica marcado, não escondido
@@ -1225,7 +1242,7 @@ function abaResumo(wb) {
 
   titulo(1, "CONFERÊNCIA DE PAGAMENTOS", 16);
   ws.getCell("A2").value =
-    `Relatório de ${estado.dados.meta.dataInicio || "—"} · ${estado.itens.length} solicitações · ` +
+    `Relatório de ${textoPeriodo(estado.dados.meta) || "—"} · ${estado.itens.length} solicitações · ` +
     `R$ ${moeda(estado.dados.validacao.valorExtraido)}`;
   ws.getCell("A2").font = { name: "Calibri", size: 11, color: { argb: "FF595959" } };
   ws.getCell("A3").value = estado.dados.meta.empresa || "";
@@ -1330,7 +1347,7 @@ async function gerarPlanilha() {
     }
 
     const buffer = await wb.xlsx.writeBuffer();
-    const ref = (estado.dados.meta.dataInicio || "").replace(/\//g, "-");
+    const ref = textoPeriodo(estado.dados.meta).replace(/\//g, "-").replace(/ /g, "_");
     baixar(new Blob([buffer], {
       type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     }), `Conferencia_Pagamentos_${ref}.xlsx`);
@@ -1377,7 +1394,8 @@ function consolidarLotes() {
     for (const s of ordenar(l.solicitacoes)) {
       const p = l.pareceres[s.sn] || {};
       linhas.push({
-        data: l.data, empresa: l.empresa, sn: s.sn, tipo: s.tipo, valor: s.valor,
+        data: l.data, empresa: l.empresa, sn: s.sn, tipo: s.tipo,
+        solicitante: s.solicitante, competente: s.competente, valor: s.valor,
         favorecido: s.favorecido, destinacao: s.destinacao,
         apontamentos: apontamentosDe(s),
         status: p.status || "Sem conferir", parecer: p.parecer || "",
@@ -1392,9 +1410,11 @@ const COLUNAS_GERAL = [
   { header: "Empresa", key: "empresa", width: 34 },
   { header: "S.N", key: "sn", width: 12 },
   { header: "Forma de pagamento", key: "tipo", width: 20 },
-  { header: "Valor (R$)", key: "valor", width: 14 },
+  { header: "Solicitante", key: "solicitante", width: 22 },
+  { header: "Competente", key: "competente", width: 22 },
   { header: "Favorecido", key: "favorecido", width: 38 },
   { header: "Destinação", key: "destinacao", width: 54 },
+  { header: "Valor (R$)", key: "valor", width: 14 },
   { header: "Status", key: "status", width: 24 },
   { header: "Parecer", key: "parecer", width: 44 },
   { header: "Apontamentos", key: "apontamentos", width: 38 },
@@ -1417,7 +1437,7 @@ function abaGeral(wb, nome, linhas) {
     });
     linha.getCell("valor").numFmt = "#,##0.00";
     linha.getCell("valor").alignment = { vertical: "top", horizontal: "right" };
-    for (const k of ["empresa", "favorecido", "destinacao", "apontamentos", "parecer"]) {
+    for (const k of ["empresa", "solicitante", "competente", "favorecido", "destinacao", "apontamentos", "parecer"]) {
       linha.getCell(k).alignment = { vertical: "top", wrapText: true };
     }
     const ap = linha.getCell("apontamentos");
