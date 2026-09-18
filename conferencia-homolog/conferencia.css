@@ -81,6 +81,9 @@ h2{font-size:.95rem;font-weight:700;margin:0 0 1rem;letter-spacing:-.01em}
 .alerta__x{position:absolute;top:.35rem;right:.4rem;background:transparent;border:0;
   color:inherit;opacity:.6;cursor:pointer;font:inherit;font-size:.8rem;line-height:1;padding:.2rem}
 .alerta__x:hover{opacity:1}
+.alerta--removivel{padding-right:2.3rem}
+.apont-ocultos{margin:-.3rem 0 .7rem}
+.apont-ocultos .linkbtn{margin-left:.3rem}
 
 /* status */
 .status{display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:1rem}
