@@ -455,25 +455,30 @@ function renderRetomar(confirmando) {
       const pend = d.lotes.filter((l) => l.feitos < l.total).length;
       return `
       <div class="dia">
-        <button class="dia__cab" data-acao="alternar-dia" data-dia="${d.data}"
-                aria-expanded="${aberto}">
-          <span class="dia__seta">${aberto ? "▾" : "▸"}</span>${d.data}
-          <span class="sub">${d.lotes.length === 1 ? "1 empresa"
-                                                   : d.lotes.length + " empresas"}${
-            aberto ? "" : pend ? ` · ${pend} em aberto` : " · tudo conferido"}</span>
-        </button>
+        <div class="dia__cab">
+          <button class="dia__toggle" data-acao="alternar-dia" data-dia="${d.data}"
+                  aria-expanded="${aberto}">
+            <span class="dia__seta">${aberto ? "▾" : "▸"}</span>${d.data}
+            <span class="sub">${d.lotes.length === 1 ? "1 empresa"
+                                                     : d.lotes.length + " empresas"}${
+              aberto ? "" : pend ? ` · ${pend} em aberto` : " · tudo conferido"}</span>
+          </button>
+          <button class="dia__imprimir" data-acao="imprimir-dia" data-dia="${d.data}"
+                  title="Gerar planilha com o resumo das empresas de ${d.data}">Imprimir</button>
+        </div>
         ${aberto ? d.lotes.map(linha).join("") : ""}
       </div>`;
     }).join("");
 
   caixa.querySelectorAll("button").forEach((b) => {
     b.onclick = () => {
-      const { acao, chave } = b.dataset;
+      const { acao, chave, dia } = b.dataset;
       if (acao === "alternar-dia") {
         diasAbertos[b.dataset.dia] = !diasAbertos[b.dataset.dia];
         renderRetomar(confirmando);
         return;
       }
+      if (acao === "imprimir-dia") { imprimirDia(b, dia); return; }
       if (acao === "retomar") carregar(chave);
       else if (acao === "resumo") carregar(chave, "resumo");
       else if (acao === "perguntar") renderRetomar(chave);
@@ -1483,8 +1488,9 @@ function abaResumoGeral(wb, lotes, linhas) {
     `${lotes.length} conferência(s) · ${datas.length} dia(s) · ${linhas.length} solicitações · ` +
     `R$ ${moeda(valorTotal)}`;
   ws.getCell("A2").font = { name: "Calibri", size: 11, color: { argb: "FF595959" } };
+  const periodo = datas.length > 1 ? `${datas[0]} a ${datas[datas.length - 1]}` : datas[0];
   ws.getCell("A3").value = datas.length
-    ? `Período: ${datas[0]} a ${datas[datas.length - 1]} · gerado em ${new Date().toLocaleString("pt-BR")}`
+    ? `Período: ${periodo} · gerado em ${new Date().toLocaleString("pt-BR")}`
     : "";
   ws.getCell("A3").font = { name: "Calibri", size: 10, color: { argb: "FF808080" } };
   ws.getCell("A4").value = apontadas
@@ -1600,6 +1606,44 @@ async function gerarPlanilhaGeral() {
     aviso("Planilha consolidada gerada.", false);
   } catch (e) {
     aviso(`Não consegui gerar a planilha consolidada: ${e.message}`, true);
+  } finally {
+    btn.disabled = false; btn.textContent = rotulo;
+  }
+}
+
+/** Gera a planilha Excel de um único dia — botão "Imprimir" na linha do dia
+ *  da lista de conferências guardadas. Mesmo formato do consolidado geral
+ *  (abaResumoGeral + abaGeral), só que filtrado para as empresas daquele dia. */
+async function imprimirDia(btn, data) {
+  const rotulo = btn.textContent;
+  const aviso = (t, erro) => {
+    $("upload-msg").innerHTML = `<div class="alerta${erro ? " erro" : ""}">${t}
+      <button class="alerta__x" id="btn-fecha-planilha-geral" title="Dispensar">✕</button></div>`;
+    $("btn-fecha-planilha-geral").onclick = () => { $("upload-msg").innerHTML = ""; };
+  };
+  btn.disabled = true; btn.textContent = "Gerando…";
+  try {
+    const { lotes, linhas } = consolidarLotes();
+    const lotesDia = lotes.filter((l) => l.data === data);
+    const linhasDia = linhas.filter((l) => l.data === data);
+    if (!linhasDia.length) throw new Error(`não há conferência guardada para ${data}`);
+    await carregarExcelJS();
+    const wb = new ExcelJS.Workbook();
+    wb.creator = "NOCTUS — Conferência de Pagamentos";
+    wb.created = new Date();
+
+    abaResumoGeral(wb, lotesDia, linhasDia);
+    abaGeral(wb, "TODAS", linhasDia);
+    const apontadas = linhasDia.filter((l) => l.apontamentos);
+    if (apontadas.length) abaGeral(wb, "APONTAMENTOS", apontadas);
+
+    const buffer = await wb.xlsx.writeBuffer();
+    baixar(new Blob([buffer], {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    }), `Conferencias_${data.replace(/\//g, "-")}.xlsx`);
+    aviso(`Planilha de ${data} gerada.`, false);
+  } catch (e) {
+    aviso(`Não consegui gerar a planilha de ${data}: ${e.message}`, true);
   } finally {
     btn.disabled = false; btn.textContent = rotulo;
   }
