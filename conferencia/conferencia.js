@@ -1410,6 +1410,74 @@ function consolidarLotes() {
   return { lotes, linhas };
 }
 
+/* ------------------------------------------------- abas por empresa ("Imprimir" do dia)
+ * PARÂMETROS dos nomes das abas. A ORDEM desta lista é a ordem das abas na planilha.
+ * `chave` = palavra inteira (sem acento, maiúscula) procurada no nome da empresa do
+ * relatório. Empresa que não casar com nenhuma chave ganha a aba "EMP <código>".
+ * Só o botão "Imprimir" do dia usa isto; o consolidado geral segue como era. */
+const ABAS_EMPRESA = [
+  { nome: "Momentum",    chave: "MOMENTUM",    aba: "MM" },
+  { nome: "RVM",         chave: "RVM",         aba: "RVM" },
+  { nome: "Pick Money",  chave: "PICK MONEY",  aba: "PKM" },
+  { nome: "Slim",        chave: "SLIM",        aba: "SLIM" },
+  { nome: "Posto",       chave: "POSTO",       aba: "Posto" },
+  { nome: "Kasil",       chave: "KASIL",       aba: "Kasil" },
+  { nome: "Instituto",   chave: "INSTITUTO",   aba: "IRM" },
+  { nome: "Realiza",     chave: "REALIZA",     aba: "REALIZA" },
+  { nome: "Abrasma",     chave: "ABRASMA",     aba: "ABRASMA" },
+  { nome: "MMH",         chave: "MMH",         aba: "MMH" },
+  { nome: "M5",          chave: "M5",          aba: "M5" },
+  { nome: "M3",          chave: "M3",          aba: "M3" },
+  { nome: "Praia Verde", chave: "PRAIA VERDE", aba: "PV" },
+];
+
+const semAcento = (t) => String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
+const letraColuna = (n) => { let s = ""; for (; n > 0; n = Math.floor((n - 1) / 26)) s = String.fromCharCode(65 + ((n - 1) % 26)) + s; return s; };
+// Link interno = fórmula HYPERLINK (salto padrão do Excel). Aspas simples: "M3" parece célula.
+const linkAba = (aba, rotulo = aba) => ({
+  formula: `HYPERLINK("#'${aba.replace(/'/g, "''")}'!A1","${rotulo.replace(/"/g, '""')}")`,
+  result: rotulo,
+});
+
+function nomeAbaEmpresa(empresa) {
+  const txt = semAcento(empresa);
+  const achou = ABAS_EMPRESA.find((e) => new RegExp(`(^|[^A-Z0-9])${e.chave}([^A-Z0-9]|$)`).test(txt));
+  if (achou) return achou.aba;
+  const cod = (String(empresa).match(/^\s*(\d+)/) || [])[1];
+  return cod ? `EMP ${cod}` : String(empresa).replace(/[\\/?*[\]:]/g, " ").slice(0, 31);
+}
+
+/** Decide a aba de cada empresa e a ordem das abas (ordem de ABAS_EMPRESA; sem parâmetro, no fim). */
+function planoAbasEmpresa(linhas) {
+  const porEmpresa = new Map();                       // nome completo da empresa -> nome da aba
+  for (const emp of new Set(linhas.map((l) => l.empresa))) porEmpresa.set(emp, nomeAbaEmpresa(emp));
+  const pos = (a) => { const i = ABAS_EMPRESA.findIndex((e) => e.aba === a); return i < 0 ? 999 : i; };
+  const abas = [...new Set(porEmpresa.values())].sort((a, b) => pos(a) - pos(b));
+  return { porEmpresa, abas };
+}
+
+/** Linha 1 das abas de dados: "← RESUMO | TODAS | MM | PKM | …" (aba atual em destaque, sem link). */
+function barraNavegacao(ws, plano, atual, colunas) {
+  const itens = [["← RESUMO", "RESUMO GERAL"], ["TODAS", "TODAS"], ...plano.abas.map((a) => [a, a])];
+  const linha = ws.getRow(1);
+  linha.height = 20;
+  for (let i = 1; i <= Math.max(colunas, itens.length); i++) {
+    linha.getCell(i).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF2F2F2" } };
+  }
+  itens.forEach(([rotulo, alvo], i) => {
+    const c = linha.getCell(i + 1);
+    c.alignment = { vertical: "middle", horizontal: "left" };
+    if (alvo === atual) {
+      c.value = rotulo;
+      c.font = { name: "Calibri", size: 10, bold: true, color: { argb: "FFFFFFFF" } };
+      c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: AZUL } };
+    } else {
+      c.value = linkAba(alvo, rotulo);
+      c.font = { name: "Calibri", size: 10, bold: true, underline: true, color: { argb: "FF1D4ED8" } };
+    }
+  });
+}
+
 const COLUNAS_GERAL = [
   { header: "Data", key: "data", width: 12 },
   { header: "Empresa", key: "empresa", width: 34 },
@@ -1425,16 +1493,25 @@ const COLUNAS_GERAL = [
   { header: "Apontamentos", key: "apontamentos", width: 38 },
 ];
 
-function abaGeral(wb, nome, linhas) {
+/** Aba de dados. Com `plano` (Imprimir do dia): barra de links na linha 1, cabeçalho na 2,
+ *  filtro cobrindo todas as linhas e área de impressão sem a barra. */
+function abaGeral(wb, nome, linhas, plano = null) {
+  const topo = plano ? 2 : 1;
   const ws = wb.addWorksheet(nome, {
-    views: [{ showGridLines: false, state: "frozen", ySplit: 1 }],
+    views: [{ showGridLines: false, state: "frozen", ySplit: topo }],
   });
-  ws.columns = COLUNAS_GERAL.map(({ header, key, width }) => ({ header, key, width }));
+  if (plano) {
+    ws.columns = COLUNAS_GERAL.map(({ key, width }) => ({ key, width }));
+    barraNavegacao(ws, plano, nome, COLUNAS_GERAL.length);
+    ws.addRow(Object.fromEntries(COLUNAS_GERAL.map(({ key, header }) => [key, header])));
+  } else {
+    ws.columns = COLUNAS_GERAL.map(({ header, key, width }) => ({ header, key, width }));
+  }
   for (const l of linhas) ws.addRow(l);
-  estilizarCabecalho(ws.getRow(1));
+  estilizarCabecalho(ws.getRow(topo));
 
   ws.eachRow((linha, n) => {
-    if (n === 1) return;
+    if (n <= topo) return;
     linha.eachCell((c) => {
       c.font = { name: "Calibri", size: 11 };
       c.alignment = { vertical: "top", wrapText: false };
@@ -1452,14 +1529,19 @@ function abaGeral(wb, nome, linhas) {
                 color: { argb: COR_STATUS[st.value] || "FF808080" } };
   });
 
-  ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: COLUNAS_GERAL.length } };
+  const ultima = plano ? topo + linhas.length : topo;
+  ws.autoFilter = { from: { row: topo, column: 1 }, to: { row: ultima, column: COLUNAS_GERAL.length } };
+  if (plano) ws.pageSetup.printArea = `A${topo}:${letraColuna(COLUNAS_GERAL.length)}${ultima}`;
   return ws;
 }
 
-function abaResumoGeral(wb, lotes, linhas) {
+/** Resumo. Com `plano` (Imprimir do dia): ganha a coluna "Aba" (link p/ a aba da empresa) à
+ *  esquerda de Empresa, e uma linha oculta com o atalho da aba PARAMETROS. */
+function abaResumoGeral(wb, lotes, linhas, plano = null) {
+  const o = plano ? 1 : 0;                       // deslocamento das colunas p/ a direita
   const ws = wb.addWorksheet("RESUMO GERAL", { views: [{ showGridLines: false }] });
-  ws.columns = [{ width: 12 }, { width: 40 }, { width: 10 }, { width: 16 },
-                { width: 12 }, { width: 14 }, { width: 16 }];
+  ws.columns = (o ? [12, 10, 40, 10, 16, 12, 14, 16] : [12, 40, 10, 16, 12, 14, 16])
+    .map((width) => ({ width }));
 
   const titulo = (l, texto, tamanho) => {
     const c = ws.getCell(`A${l}`);
@@ -1474,9 +1556,10 @@ function abaResumoGeral(wb, lotes, linhas) {
       const c = linha.getCell(i);
       c.font = { name: "Calibri", size: 11, bold: true, color: { argb: "FFFFFFFF" } };
       c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: AZUL } };
-      c.alignment = { vertical: "middle", horizontal: i <= 2 ? "left" : "center", wrapText: true };
+      c.alignment = { vertical: "middle", horizontal: i <= 2 + o ? "left" : "center", wrapText: true };
     }
   };
+  const fonteLink = { name: "Calibri", size: 11, bold: true, underline: true, color: { argb: "FF1D4ED8" } };
 
   const datas = [...new Set(lotes.map((l) => l.data))];
   const valorTotal = linhas.reduce((a, l) => a + (l.valor || 0), 0);
@@ -1493,8 +1576,9 @@ function abaResumoGeral(wb, lotes, linhas) {
     ? `Período: ${periodo} · gerado em ${new Date().toLocaleString("pt-BR")}`
     : "";
   ws.getCell("A3").font = { name: "Calibri", size: 10, color: { argb: "FF808080" } };
+  const ondeApontamentos = plano ? "ver coluna Apontamentos" : "ver aba APONTAMENTOS";
   ws.getCell("A4").value = apontadas
-    ? `${apontadas} solicitação(ões) com apontamento automático — ver aba APONTAMENTOS`
+    ? `${apontadas} solicitação(ões) com apontamento automático — ${ondeApontamentos}`
     : "Nenhum apontamento automático no período";
   ws.getCell("A4").font = apontadas
     ? { name: "Calibri", size: 11, bold: true, color: { argb: AMBAR } }
@@ -1507,30 +1591,40 @@ function abaResumoGeral(wb, lotes, linhas) {
     : { name: "Calibri", size: 10, color: { argb: "FF15803D" } };
 
   titulo(7, "POR DIA E EMPRESA", 12);
-  cabecalho(8, ["Data", "Empresa", "Qtde", "Valor (R$)", "Conferidas", "Sem conferir", "Apontamentos"]);
+  cabecalho(8, o
+    ? ["Data", "Aba", "Empresa", "Qtde", "Valor (R$)", "Conferidas", "Sem conferir", "Apontamentos"]
+    : ["Data", "Empresa", "Qtde", "Valor (R$)", "Conferidas", "Sem conferir", "Apontamentos"]);
   let l = 9;
   for (const lote of lotes) {
     const doLote = linhas.filter((x) => x.data === lote.data && x.empresa === lote.empresa);
     const linha = ws.getRow(l);
     linha.getCell(1).value = lote.data;
-    linha.getCell(2).value = lote.empresa;
-    linha.getCell(3).value = doLote.length;
-    linha.getCell(4).value = doLote.reduce((a, x) => a + (x.valor || 0), 0);
-    linha.getCell(5).value = doLote.filter((x) => x.status !== "Sem conferir").length;
-    linha.getCell(6).value = doLote.filter((x) => x.status === "Sem conferir").length;
-    linha.getCell(7).value = doLote.filter((x) => x.apontamentos).length;
+    if (o) {
+      const aba = plano.porEmpresa.get(lote.empresa);
+      linha.getCell(2).value = linkAba(aba);
+      linha.getCell(2).font = fonteLink;
+    }
+    linha.getCell(2 + o).value = lote.empresa;
+    linha.getCell(3 + o).value = doLote.length;
+    linha.getCell(4 + o).value = doLote.reduce((a, x) => a + (x.valor || 0), 0);
+    linha.getCell(5 + o).value = doLote.filter((x) => x.status !== "Sem conferir").length;
+    linha.getCell(6 + o).value = doLote.filter((x) => x.status === "Sem conferir").length;
+    linha.getCell(7 + o).value = doLote.filter((x) => x.apontamentos).length;
     l++;
   }
   const total = ws.getRow(l);
   total.getCell(1).value = "TOTAL";
-  for (const col of ["C", "D", "E", "F", "G"]) {
+  for (const n of [3, 4, 5, 6, 7]) {
+    const col = letraColuna(n + o);
     total.getCell(col).value = { formula: `SUM(${col}9:${col}${l - 1})` };
   }
   const fimLotes = l;
 
   const inicioStatus = l + 3;
   titulo(inicioStatus - 1, "POR STATUS NO PERÍODO", 12);
-  cabecalho(inicioStatus, ["Status", "", "Qtde", "Valor (R$)", "% do valor"]);
+  cabecalho(inicioStatus, o
+    ? ["Status", "", "", "Qtde", "Valor (R$)", "% do valor"]
+    : ["Status", "", "Qtde", "Valor (R$)", "% do valor"]);
   l = inicioStatus + 1;
   const base = valorTotal || 1;
   for (const nome of [...STATUS.map((x) => x.valor), "Sem conferir"]) {
@@ -1539,31 +1633,100 @@ function abaResumoGeral(wb, lotes, linhas) {
     const soma = doStatus.reduce((a, x) => a + (x.valor || 0), 0);
     const linha = ws.getRow(l);
     linha.getCell(1).value = nome;
-    linha.getCell(3).value = doStatus.length;
-    linha.getCell(4).value = soma;
-    linha.getCell(5).value = soma / base;
+    linha.getCell(3 + o).value = doStatus.length;
+    linha.getCell(4 + o).value = soma;
+    linha.getCell(5 + o).value = soma / base;
     if (COR_STATUS[nome]) {
       linha.getCell(1).font = { name: "Calibri", size: 11, bold: true, color: { argb: COR_STATUS[nome] } };
     }
     l++;
   }
 
+  const hair = { bottom: { style: "hair", color: { argb: CINZA_LINHA } } };
   for (let n = 9; n < l; n++) {
     const linha = ws.getRow(n);
     linha.eachCell((c, i) => {
       if (!c.font) c.font = { name: "Calibri", size: 11 };
-      c.border = { bottom: { style: "hair", color: { argb: CINZA_LINHA } } };
-      if (i >= 3) c.alignment = { horizontal: "center" };
-      if (i === 4) { c.numFmt = "#,##0.00"; c.alignment = { horizontal: "right" }; }
+      c.border = hair;
+      if (i >= 3 + o) c.alignment = { horizontal: "center" };
+      if (i === 4 + o) { c.numFmt = "#,##0.00"; c.alignment = { horizontal: "right" }; }
     });
-    if (n >= inicioStatus + 1) linha.getCell(5).numFmt = "0.0%";
+    if (n >= inicioStatus + 1) {
+      linha.getCell(5 + o).numFmt = "0.0%";
+      if (o) for (const i of [2, 3]) linha.getCell(i).border = hair;   // linha contínua sob "Status"
+    }
   }
   const lt = ws.getRow(fimLotes);
   lt.eachCell((c) => {
     c.font = { name: "Calibri", size: 11, bold: true };
     c.border = { top: { style: "thin", color: { argb: AZUL } } };
   });
-  lt.getCell(4).numFmt = "#,##0.00";
+  if (o) lt.getCell(2).border = { top: { style: "thin", color: { argb: AZUL } } };
+  lt.getCell(4 + o).numFmt = "#,##0.00";
+
+  if (plano) {
+    ws.pageSetup.printArea = `A1:${letraColuna(7 + o)}${l - 1}`;   // o papel não muda
+    const rp = ws.getRow(l + 1);                                   // atalho p/ PARAMETROS, oculto
+    rp.getCell(1).value = linkAba("PARAMETROS");
+    rp.getCell(1).font = fonteLink;
+    rp.getCell(2).value = "Padrão de nomes das abas por empresa";
+    rp.hidden = true;
+  }
+  return ws;
+}
+
+/** Aba de referência (oculta) com o mapeamento usado. Conta quantas solicitações casam com cada
+ *  chave e mostra as que ficaram sem mapeamento (deve ser 0). */
+function abaParametros(wb, plano, totalLinhas) {
+  const ws = wb.addWorksheet("PARAMETROS", { state: "hidden", views: [{ showGridLines: false }] });
+  ws.columns = [{ width: 22 }, { width: 34 }, { width: 16 }, { width: 26 }];
+  barraNavegacao(ws, plano, "PARAMETROS", 4);
+  ws.getCell("A3").value = "PARÂMETROS — NOMES DAS ABAS POR EMPRESA";
+  ws.getCell("A3").font = { name: "Calibri", size: 12, bold: true, color: { argb: AZUL } };
+  ws.getCell("A4").value = "Referência do padrão usado para nomear as abas. Empresa sem solicitações no dia não gera aba.";
+  ws.getCell("A4").font = { name: "Calibri", size: 10, color: { argb: "FF808080" } };
+  const cab = ws.getRow(6);
+  ["Empresa", "Palavra-chave no nome da empresa", "Nome da aba", "Solicitações em TODAS"]
+    .forEach((t, i) => (cab.getCell(i + 1).value = t));
+  cab.height = 32;
+  for (let i = 1; i <= 4; i++) {
+    const c = cab.getCell(i);
+    c.font = { name: "Calibri", size: 11, bold: true, color: { argb: "FFFFFFFF" } };
+    c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: AZUL } };
+    c.alignment = { vertical: "middle", horizontal: i <= 2 ? "left" : "center", wrapText: true };
+  }
+  const hair = { bottom: { style: "hair", color: { argb: CINZA_LINHA } } };
+  const fim = 2 + totalLinhas;                      // última linha de dados em TODAS
+  ABAS_EMPRESA.forEach((e, i) => {
+    const r = 7 + i;
+    const linha = ws.getRow(r);
+    linha.getCell(1).value = e.nome;
+    linha.getCell(2).value = e.chave;
+    linha.getCell(3).value = e.aba;
+    linha.getCell(4).value = { formula: `COUNTIF(TODAS!$B$3:$B$${fim},"*"&B${r}&"*")` };
+    for (let c = 1; c <= 4; c++) {
+      const cel = linha.getCell(c);
+      cel.font = { name: "Calibri", size: 11 };
+      cel.border = hair;
+      if (c >= 3) cel.alignment = { horizontal: "center" };
+    }
+  });
+  const ult = 6 + ABAS_EMPRESA.length;
+  const tm = ws.getRow(ult + 1), sm = ws.getRow(ult + 2);
+  tm.getCell(1).value = "Total mapeado";
+  tm.getCell(4).value = { formula: `SUM(D7:D${ult})` };
+  sm.getCell(1).value = "Sem mapeamento (deve ser 0)";
+  sm.getCell(4).value = { formula: `COUNTA(TODAS!$B$3:$B$${fim})-D${ult + 1}` };
+  for (const linha of [tm, sm]) {
+    linha.getCell(1).font = { name: "Calibri", size: 11, bold: true };
+    linha.getCell(4).font = { name: "Calibri", size: 11, bold: true };
+    linha.getCell(4).alignment = { horizontal: "center" };
+  }
+  ws.addConditionalFormatting({
+    ref: `D${ult + 2}`,
+    rules: [{ type: "cellIs", operator: "notEqual", formulae: [0],
+              style: { font: { bold: true, color: { argb: "FFB91C1C" } } } }],
+  });
   return ws;
 }
 
@@ -1613,7 +1776,8 @@ async function gerarPlanilhaGeral() {
 
 /** Gera a planilha Excel de um único dia — botão "Imprimir" na linha do dia
  *  da lista de conferências guardadas. Mesmo formato do consolidado geral
- *  (abaResumoGeral + abaGeral), só que filtrado para as empresas daquele dia. */
+ *  (abaResumoGeral + abaGeral), só que filtrado para as empresas daquele dia e com
+ *  uma aba por empresa (ver ABAS_EMPRESA). O consolidado geral não muda. */
 async function imprimirDia(btn, data) {
   const rotulo = btn.textContent;
   const aviso = (t, erro) => {
@@ -1632,10 +1796,15 @@ async function imprimirDia(btn, data) {
     wb.creator = "NOCTUS — Conferência de Pagamentos";
     wb.created = new Date();
 
-    abaResumoGeral(wb, lotesDia, linhasDia);
-    abaGeral(wb, "TODAS", linhasDia);
-    const apontadas = linhasDia.filter((l) => l.apontamentos);
-    if (apontadas.length) abaGeral(wb, "APONTAMENTOS", apontadas);
+    // Formato do "Imprimir" do dia: uma aba por empresa (nomes em ABAS_EMPRESA), sem a aba
+    // APONTAMENTOS (a coluna Apontamentos segue nas abas) e com links entre as abas.
+    const plano = planoAbasEmpresa(linhasDia);
+    abaResumoGeral(wb, lotesDia, linhasDia, plano);
+    abaGeral(wb, "TODAS", linhasDia, plano);
+    for (const aba of plano.abas) {
+      abaGeral(wb, aba, linhasDia.filter((l) => plano.porEmpresa.get(l.empresa) === aba), plano);
+    }
+    abaParametros(wb, plano, linhasDia.length).state = "hidden";
 
     const buffer = await wb.xlsx.writeBuffer();
     baixar(new Blob([buffer], {
