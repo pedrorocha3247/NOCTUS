@@ -69,8 +69,30 @@ const codEmpresa = (meta) => {
 const nomeEmpresa = (meta) =>
   meta?.empresa || meta?.empresaNome || "Empresa não identificada";
 
-const chaveLote = (d) =>
+/**
+ * Texto do período do relatório: "01/09/2026" para um relatório de um dia só,
+ * "01/09/2026 a 18/09/2026" quando o relatório cobre vários dias (dataFim
+ * diferente de dataInicio). Antes disso só dataInicio era mostrado em toda
+ * parte — para um relatório de um dia só isso já era o período inteiro, mas
+ * num relatório de várias semanas escondia os outros dias do usuário.
+ */
+const textoPeriodo = (meta) =>
+  meta?.dataFim && meta.dataFim !== meta.dataInicio
+    ? `${meta.dataInicio || ""} a ${meta.dataFim}`
+    : (meta?.dataInicio || "");
+
+/**
+ * Chave "base" da conferência (sem usuário): identifica a conferência pelo
+ * documento em si (data + empresa). Usada pelos anexos, que pertencem à
+ * solicitação, não a quem está conferindo — não pode depender de login.
+ */
+const chaveLoteBase = (d) =>
   `${CHAVE}.${(d.meta.dataInicio || "sem-data").replace(/\//g, "-")}.e${codEmpresa(d.meta)}`;
+
+/** Chave da conferência COM escopo de usuário — usada só para o progresso
+ *  (pareceres) salvo neste navegador, que é isolado por pessoa. */
+const chaveLote = (d) =>
+  `${CHAVE}.${escopoUsuario()}.${(d.meta.dataInicio || "sem-data").replace(/\//g, "-")}.e${codEmpresa(d.meta)}`;
 
 /** Campos cuja alteração invalida um parecer já dado. */
 const assinatura = (s) => [s.tipo, s.valor, s.favorecido, s.cpfCnpj, s.destinacao,
@@ -166,14 +188,27 @@ function migrarChaves() {
       }
       if (mudou) localStorage.setItem(chave, JSON.stringify(v));
     }
+    // conferências salvas antes do cadastro por usuário: passam a pertencer ao admin
+    // (único usuário que existia antes) na primeira vez que ele abrir o módulo depois
+    // desta atualização. Um usuário novo cadastrado nunca herda essas conferências.
+    if (ehAdmin()) {
+      for (const chave of Object.keys(localStorage)) {
+        const m = chave.match(new RegExp(`^${CHAVE}\\.(\\d{2}-\\d{2}-\\d{4})\\.e(.+)$`));
+        if (!m) continue;
+        const destino = `${CHAVE}.${escopoUsuario()}.${m[1]}.e${m[2]}`;
+        if (!localStorage.getItem(destino)) localStorage.setItem(destino, localStorage.getItem(chave));
+        localStorage.removeItem(chave);
+      }
+    }
   } catch (e) { /* modo privado ou entrada corrompida: segue sem migrar */ }
 }
 
 function lotesSalvos() {
   const out = [];
+  const prefixo = `${CHAVE}.${escopoUsuario()}.`;
   for (let k = 0; k < localStorage.length; k++) {
     const chave = localStorage.key(k);
-    if (!chave || !chave.startsWith(CHAVE + ".")) continue;
+    if (!chave || !chave.startsWith(prefixo)) continue;
     try {
       const v = JSON.parse(localStorage.getItem(chave));
       out.push({ chave, meta: v.meta, data: v.meta?.dataInicio || "sem data",
@@ -190,7 +225,7 @@ function carregar(chave, destino) {
   const v = JSON.parse(localStorage.getItem(chave));
   estado.dados = { meta: v.meta, validacao: v.validacao, solicitacoes: v.solicitacoes };
   estado.pareceres = v.pareceres || {};
-  estado.itens = ordenar(v.solicitacoes);
+  estado.itens = ordenar(v.solicitacoes, estado.pareceres);
   estado.i = Math.min(v.i || 0, estado.itens.length - 1);
   recalcularPoderes();   // o OTN pode ter mudado desde que este lote foi salvo
   irPara("revisao");
@@ -201,11 +236,22 @@ function carregar(chave, destino) {
 }
 
 /* ------------------------------------------------------------------- utilidades */
-const ordenar = (ss) =>
-  [...ss].sort((a, b) => {
+/**
+ * Ordena pela forma de pagamento e valor (ordem "natural" da conferência) e,
+ * quando `pareceres` é informado, faz um segundo passe estável que empurra as
+ * solicitações ainda sem parecer para depois das já conferidas — sem misturar
+ * uma coisa com a outra. Sort é estável, então esse segundo passe preserva a
+ * ordem natural dentro de cada grupo (conferidas / pendentes).
+ */
+const ordenar = (ss, pareceres) => {
+  const base = [...ss].sort((a, b) => {
     const ta = ORDEM.indexOf(a.tipo), tb = ORDEM.indexOf(b.tipo);
     return (ta < 0 ? 99 : ta) - (tb < 0 ? 99 : tb) || (b.valor || 0) - (a.valor || 0);
   });
+  if (!pareceres) return base;
+  const pendente = (s) => (pareceres[s.sn]?.status ? 0 : 1);
+  return base.sort((a, b) => pendente(a) - pendente(b));
+};
 
 const feitos = () => estado.itens.filter((s) => estado.pareceres[s.sn]?.status).length;
 
@@ -250,16 +296,29 @@ function ligarVoltar() {
  * qualquer parâmetro que o conferente precise ajustar sem mexer no código.
  */
 let telaAntesConfig = "upload";
+/** true quando as Configurações foram abertas direto da tela inicial do NOCTUS
+ *  (botão Configurações no painel), não de dentro do módulo. */
+let configAbertaViaHome = false;
 
 function abrirConfig() {
+  if (!ehAdmin()) return;
   if (telaAtual !== "config") telaAntesConfig = telaAtual;
   $("cfg-otn").value = otnAtual();
   $("cfg-msg").innerHTML = "";
   irPara("config");
+  if (configAbertaViaHome) {
+    const a = $("voltar-topo");
+    if (a) { a.textContent = "Voltar"; a.title = "Voltar para o NOCTUS"; }
+  }
 }
 
-/** Volta pra tela de onde as configurações foram abertas, já redesenhada. */
+/**
+ * Volta pra tela de onde as configurações foram abertas, já redesenhada — ou,
+ * se vieram direto da tela inicial do NOCTUS, volta pra lá em vez de cair
+ * dentro do módulo.
+ */
 function fecharConfig() {
+  if (configAbertaViaHome) { window.location.href = "../#/"; return; }
   const destino = telaAntesConfig;
   irPara(destino);
   if (destino === "upload") renderRetomar();
@@ -274,12 +333,17 @@ function fecharConfig() {
  * parser: assim, quando o OTN muda, dá pra refazer só essa conta sem reler o
  * PDF e sem duplicar apontamento nenhum.
  */
+const LIMITE_OTN_UNICO = 10;
+
 function recalcularPoderes() {
   if (!estado.dados) return;
   const otn = otnAtual();
-  for (const s of estado.dados.solicitacoes)
+  for (const s of estado.dados.solicitacoes) {
     s.alertaPoder = verificarPoder(estado.dados.meta.empresaCodigo, s.competente,
                                    s.poder, s.valor, otn);
+    s.alerta10otn = s.valor > otn * LIMITE_OTN_UNICO
+      ? "Solicitação ultrapassa a 10 OTN" : null;
+  }
 }
 
 function salvarOtn(v) {
@@ -299,7 +363,10 @@ function salvarOtn(v) {
 
 function ligarConfig() {
   const abrir = $("btn-config");
-  if (abrir) abrir.onclick = () => abrirConfig();
+  if (abrir) {
+    if (!ehAdmin()) abrir.style.display = "none";
+    else abrir.onclick = () => abrirConfig();
+  }
   $("cfg-salvar").onclick = () =>
     salvarOtn(parseFloat(String($("cfg-otn").value).replace(",", ".")));
   $("cfg-padrao").onclick = () => {
@@ -388,25 +455,30 @@ function renderRetomar(confirmando) {
       const pend = d.lotes.filter((l) => l.feitos < l.total).length;
       return `
       <div class="dia">
-        <button class="dia__cab" data-acao="alternar-dia" data-dia="${d.data}"
-                aria-expanded="${aberto}">
-          <span class="dia__seta">${aberto ? "▾" : "▸"}</span>${d.data}
-          <span class="sub">${d.lotes.length === 1 ? "1 empresa"
-                                                   : d.lotes.length + " empresas"}${
-            aberto ? "" : pend ? ` · ${pend} em aberto` : " · tudo conferido"}</span>
-        </button>
+        <div class="dia__cab">
+          <button class="dia__toggle" data-acao="alternar-dia" data-dia="${d.data}"
+                  aria-expanded="${aberto}">
+            <span class="dia__seta">${aberto ? "▾" : "▸"}</span>${d.data}
+            <span class="sub">${d.lotes.length === 1 ? "1 empresa"
+                                                     : d.lotes.length + " empresas"}${
+              aberto ? "" : pend ? ` · ${pend} em aberto` : " · tudo conferido"}</span>
+          </button>
+          <button class="dia__imprimir" data-acao="imprimir-dia" data-dia="${d.data}"
+                  title="Gerar planilha com o resumo das empresas de ${d.data}">Imprimir</button>
+        </div>
         ${aberto ? d.lotes.map(linha).join("") : ""}
       </div>`;
     }).join("");
 
   caixa.querySelectorAll("button").forEach((b) => {
     b.onclick = () => {
-      const { acao, chave } = b.dataset;
+      const { acao, chave, dia } = b.dataset;
       if (acao === "alternar-dia") {
         diasAbertos[b.dataset.dia] = !diasAbertos[b.dataset.dia];
         renderRetomar(confirmando);
         return;
       }
+      if (acao === "imprimir-dia") { imprimirDia(b, dia); return; }
       if (acao === "retomar") carregar(chave);
       else if (acao === "resumo") carregar(chave, "resumo");
       else if (acao === "perguntar") renderRetomar(chave);
@@ -436,7 +508,6 @@ async function processar(arquivo) {
     msg.innerHTML = "";
     const salvo = localStorage.getItem(chaveLote(dados));
     estado.dados = dados;
-    estado.itens = ordenar(dados.solicitacoes);
     estado.i = 0;
     recalcularPoderes();
 
@@ -448,6 +519,9 @@ async function processar(arquivo) {
       estado.pareceres = {};
       estado.mesclagem = null;
     }
+    // com os pareceres já mesclados: os ainda pendentes ficam depois dos já
+    // conferidos, sem se misturar entre eles.
+    estado.itens = ordenar(dados.solicitacoes, estado.pareceres);
     salvar();
     irPara("revisao");
     render();
@@ -488,8 +562,26 @@ function render() {
   $("rev-contador").textContent = `solicitação ${estado.i + 1} de ${total} · ${feitos()} conferidas`;
   $("rev-barra").style.width = (feitos() / total * 100).toFixed(1) + "%";
 
-  $("rev-alertas").innerHTML = apontamentosLista(s)
-    .map((a) => `<div class="alerta">${a}</div>`).join("");
+  const listaApont = apontamentosLista(s);
+  const ocultosApont = alertasOcultosDe(s.sn);
+  const visiveisApont = listaApont.filter((a) => !ocultosApont.includes(a));
+  $("rev-alertas").innerHTML =
+    visiveisApont.map((a) => `
+      <div class="alerta alerta--removivel">
+        <span>${escAnexo(a)}</span>
+        <button type="button" class="alerta__x" data-remover-apont
+                title="Remover este apontamento — some da tela, do resumo, da planilha e do relatório impresso">✕</button>
+      </div>`).join("") +
+    (ocultosApont.length
+      ? `<div class="sub apont-ocultos">
+           <button type="button" class="linkbtn" id="btn-restaurar-apont">Restaurar Observação</button>
+         </div>`
+      : "");
+  $("rev-alertas").querySelectorAll("[data-remover-apont]").forEach((btn, i) => {
+    btn.onclick = () => { ocultarApontamento(s.sn, visiveisApont[i]); render(); };
+  });
+  const btnRestaurarApont = $("btn-restaurar-apont");
+  if (btnRestaurarApont) btnRestaurarApont.onclick = () => { restaurarApontamentos(s.sn); render(); };
 
   $("c-sn").textContent = s.sn;
   $("c-valor").textContent = "R$ " + moeda(s.valor);
@@ -513,7 +605,12 @@ function render() {
 function salvarAtual() {
   const s = estado.itens[estado.i];
   const st = document.querySelector('input[name="status"]:checked');
-  estado.pareceres[s.sn] = { status: st ? st.value : "", parecer: $("rev-parecer").value.trim() };
+  const anterior = estado.pareceres[s.sn] || {};
+  estado.pareceres[s.sn] = {
+    status: st ? st.value : "",
+    parecer: $("rev-parecer").value.trim(),
+    ...(anterior.alertasOcultos?.length ? { alertasOcultos: anterior.alertasOcultos } : {}),
+  };
   salvar();
 }
 
@@ -551,9 +648,42 @@ function ligarRevisao() {
 const APONTADAS = "@apontadas";   // valor de filtro que não colide com nome de forma de pagamento
 /** Apontamentos do parser + o de poder, que é recalculado quando o OTN muda. */
 const apontamentosLista = (s) =>
-  [...(s.alertas || []), ...(s.alertaPoder ? [s.alertaPoder] : [])];
-const temApontamento = (s) => apontamentosLista(s).length > 0;
-const apontamentosDe = (s) => apontamentosLista(s).join(" · ");
+  [...(s.alertas || []), ...(s.alertaPoder ? [s.alertaPoder] : []),
+   ...(s.alerta10otn ? [s.alerta10otn] : [])];
+
+/**
+ * Apontamentos automáticos que o conferente removeu manualmente desta solicitação
+ * (falso positivo, já esclarecido etc.). Ficam guardados junto do parecer e somem de
+ * tudo — tela, resumo, planilha e relatório impresso —, não só da tela de revisão.
+ */
+const alertasOcultosDe = (sn) => estado.pareceres[sn]?.alertasOcultos || [];
+const apontamentosVisiveis = (s) =>
+  apontamentosLista(s).filter((a) => !alertasOcultosDe(s.sn).includes(a));
+const temApontamento = (s) => apontamentosVisiveis(s).length > 0;
+const apontamentosDe = (s) => apontamentosVisiveis(s).join(" · ");
+/**
+ * true se o sistema já gerou algum apontamento pra esta solicitação, mesmo
+ * que o conferente tenha removido todos depois. Usado só no filtro "com
+ * apontamento" do resumo, pra ainda ser possível localizar essas solicitações
+ * — o texto do apontamento em si continua sumindo de tudo o mais quando
+ * removido (tela, planilha, impresso).
+ */
+const temApontamentoOriginal = (s) => apontamentosLista(s).length > 0;
+
+function ocultarApontamento(sn, texto) {
+  const p = estado.pareceres[sn] || { status: "", parecer: "" };
+  const atuais = p.alertasOcultos || [];
+  if (atuais.includes(texto)) return;
+  estado.pareceres[sn] = { ...p, alertasOcultos: [...atuais, texto] };
+  salvar();
+}
+
+function restaurarApontamentos(sn) {
+  const p = estado.pareceres[sn];
+  if (!p || !(p.alertasOcultos || []).length) return;
+  estado.pareceres[sn] = { ...p, alertasOcultos: [] };
+  salvar();
+}
 
 const SEM_STATUS = "Sem conferir";
 const statusDoItem = (s) => estado.pareceres[s.sn]?.status || SEM_STATUS;
@@ -570,7 +700,7 @@ let ultimoAberto = null;   // cartão de onde o conferidor foi aberto
 function mostrarResumo() {
   irPara("resumo");
   $("res-data").textContent =
-    "· " + (estado.dados.meta.dataInicio || "") +
+    "· " + textoPeriodo(estado.dados.meta) +
     (estado.dados.meta.empresa ? " · " + estado.dados.meta.empresa : "");
 
   const contagem = Object.fromEntries(STATUS.map((s) => [s.valor, 0]));
@@ -588,7 +718,7 @@ function mostrarResumo() {
     ? `<div class="alerta">${contagem[SEM_STATUS]} solicitação(ões) ainda sem status.</div>`
     : `<div class="alerta ok">Todas as solicitações conferidas.</div>`;
 
-  const apontadas = estado.itens.filter(temApontamento).length;
+  const apontadas = estado.itens.filter(temApontamentoOriginal).length;
   $("res-filtros").innerHTML =
     [`<span class="chip ${filtro ? "" : "on"}" data-t="">Todas</span>`]
       .concat(ORDEM.filter((t) => estado.itens.some((s) => s.tipo === t))
@@ -605,7 +735,7 @@ function mostrarResumo() {
   // própria aba. Sem aba nova — quem está olhando "TED" quer ver os recusados
   // de TED, não trocar de lista.
   const naAba = estado.itens.filter((s) =>
-    filtro === APONTADAS ? temApontamento(s) : (!filtro || s.tipo === filtro));
+    filtro === APONTADAS ? temApontamentoOriginal(s) : (!filtro || s.tipo === filtro));
   const porStatus = {};
   for (const s of naAba) porStatus[statusDoItem(s)] = (porStatus[statusDoItem(s)] || 0) + 1;
   if (filtroStatus && !porStatus[filtroStatus]) filtroStatus = null;   // sumiu nesta aba
@@ -758,6 +888,91 @@ function sessaoAtual() {
   }
 }
 
+/**
+ * Renova a sessão de login usando o refreshToken salvo (mesmo grant_type que
+ * o painel principal usa). Só é chamada de perto do vencimento do token e com
+ * o conferente ativo — ver ligarRenovacaoDeSessao().
+ */
+async function renovarSessao() {
+  const bruto = localStorage.getItem(CHAVE_SESSAO);
+  if (!bruto) return null;
+  let s;
+  try {
+    s = JSON.parse(bruto);
+  } catch {
+    return null;
+  }
+  if (!s.refreshToken) return null;
+  let resp;
+  try {
+    resp = await fetch(SB_URL + "/auth/v1/token?grant_type=refresh_token", {
+      method: "POST",
+      headers: { apikey: SB_KEY, "Content-Type": "application/json" },
+      body: JSON.stringify({ refresh_token: s.refreshToken }),
+    });
+  } catch {
+    return null;
+  }
+  const dados = await resp.json().catch(() => ({}));
+  if (!resp.ok || !dados.access_token) return null;
+  const nova = {
+    user: s.user,
+    accessToken: dados.access_token,
+    refreshToken: dados.refresh_token || s.refreshToken,
+    expiresAt: Date.now() + (dados.expires_in || 3600) * 1000,
+  };
+  localStorage.setItem(CHAVE_SESSAO, JSON.stringify(nova));
+  return nova;
+}
+
+/**
+ * Mantém a sessão viva enquanto o conferente está usando o módulo: renova
+ * pouco antes do token vencer, mas só se houve atividade recente. Depois de
+ * LIMITE_INATIVIDADE sem clique/tecla/scroll, para de renovar e deixa a
+ * sessão expirar no prazo normal — não mantém a sessão viva pra sempre com a
+ * aba esquecida aberta e sem uso.
+ */
+function ligarRenovacaoDeSessao() {
+  let ultimaAtividade = Date.now();
+  const marcar = () => { ultimaAtividade = Date.now(); };
+  ["click", "keydown", "mousemove", "scroll", "touchstart"].forEach((ev) =>
+    window.addEventListener(ev, marcar, { passive: true }));
+
+  const LIMITE_INATIVIDADE = 60 * 60 * 1000; // 60min sem atividade: para de renovar
+  const MARGEM_RENOVACAO = 5 * 60 * 1000;    // renova quando faltar menos de 5min
+  const INTERVALO = 60 * 1000;               // confere a cada 1min
+
+  setInterval(async () => {
+    const s = sessaoAtual();
+    if (!s) return;
+    if (Date.now() - ultimaAtividade > LIMITE_INATIVIDADE) return;
+    if (s.expiresAt - Date.now() > MARGEM_RENOVACAO) return;
+    await renovarSessao();
+  }, INTERVALO);
+}
+
+/** Usuário logado (mesma sessão do painel principal), ou null se ninguém entrou. */
+function usuarioAtual() {
+  return sessaoAtual()?.user || null;
+}
+
+/** true só para quem tem o papel "admin" (hoje: só o usuário fixo original). */
+function ehAdmin() {
+  const u = usuarioAtual();
+  return !!u && Array.isArray(u.roles) && u.roles.includes("admin");
+}
+
+/**
+ * Identificador do usuário atual pra separar os dados de cada um no localStorage
+ * (cada conferente só vê e mexe nas próprias conferências em andamento). Sem
+ * sessão, cai num escopo fixo — mesmo comportamento de antes do cadastro existir.
+ */
+function escopoUsuario() {
+  const u = usuarioAtual();
+  const base = String(u?.username || u?.id || "sem-login").trim().toLowerCase();
+  return base.replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) || "sem-login";
+}
+
 const escAnexo = (t) =>
   String(t ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
@@ -872,7 +1087,7 @@ async function carregarAnexos() {
   if (area) area.classList.toggle("oculto", !sessao);
   if (!sessao) return;
 
-  const lote = chaveLote(estado.dados);
+  const lote = chaveLoteBase(estado.dados);
   const minhaChave = `${lote}::${s.sn}`;
   anexosEstado.chave = minhaChave;
   $("anexos-lista").innerHTML = `<div class="sub">Carregando anexos…</div>`;
@@ -895,7 +1110,7 @@ function ligarAnexos() {
     $("anexos-input").value = "";
     if (!arquivo) return;
     const s = estado.itens[estado.i];
-    const lote = chaveLote(estado.dados);
+    const lote = chaveLoteBase(estado.dados);
     const minhaChave = `${lote}::${s.sn}`;
     $("anexos-btn").disabled = true;
     anexosAviso(`Enviando "${arquivo.name}"…`, false);
@@ -943,19 +1158,21 @@ function abaSolicitacoes(wb, nome, itens, comTipo) {
   const colunas = [
     { header: "S.N", key: "sn" },
     ...(comTipo ? [{ header: "Tipo", key: "tipo" }] : []),
-    { header: "Valor (R$)", key: "valor" },
+    { header: "Solicitante", key: "solicitante" },
+    { header: "Competente", key: "competente" },
     { header: "Favorecido", key: "favorecido" },
     { header: "Destinação", key: "destinacao" },
-    { header: "Apontamentos", key: "apontamentos" },
+    { header: "Valor (R$)", key: "valor" },
     { header: "Status", key: "status" },
     { header: "Parecer", key: "parecer" },
+    { header: "Apontamentos", key: "apontamentos" },
   ];
   ws.columns = colunas;
 
   for (const s of itens) {
     ws.addRow({
-      sn: s.sn, tipo: s.tipo, valor: s.valor,
-      favorecido: s.favorecido, destinacao: s.destinacao,
+      sn: s.sn, tipo: s.tipo, solicitante: s.solicitante, competente: s.competente,
+      valor: s.valor, favorecido: s.favorecido, destinacao: s.destinacao,
       apontamentos: apontamentosDe(s),
       status: statusNaPlanilha(s.sn), parecer: parecerDe(s.sn),
     });
@@ -963,16 +1180,19 @@ function abaSolicitacoes(wb, nome, itens, comTipo) {
 
   // largura pelo conteúdo; as colunas longas quebram linha e o Excel ajusta a altura
   const w = (k, min, max) => largura(itens.map((s) => ({
-    sn: s.sn, tipo: s.tipo, valor: moeda(s.valor), favorecido: s.favorecido,
+    sn: s.sn, tipo: s.tipo, solicitante: s.solicitante, competente: s.competente,
+    valor: moeda(s.valor), favorecido: s.favorecido,
     destinacao: s.destinacao, apontamentos: apontamentosDe(s),
     status: statusNaPlanilha(s.sn), parecer: parecerDe(s.sn),
   }[k])).concat(colunas.find((c) => c.key === k).header), min, max);
 
   ws.getColumn("sn").width = w("sn", 10, 14);
   if (comTipo) ws.getColumn("tipo").width = w("tipo", 14, 22);
-  ws.getColumn("valor").width = 14;
+  ws.getColumn("solicitante").width = w("solicitante", 16, 28);
+  ws.getColumn("competente").width = w("competente", 16, 28);
   ws.getColumn("favorecido").width = w("favorecido", 22, 42);
   ws.getColumn("destinacao").width = 58;
+  ws.getColumn("valor").width = 14;
   ws.getColumn("apontamentos").width = 38;
   ws.getColumn("status").width = 27;
   ws.getColumn("parecer").width = 46;
@@ -988,7 +1208,7 @@ function abaSolicitacoes(wb, nome, itens, comTipo) {
     });
     linha.getCell("valor").numFmt = "#,##0.00";
     linha.getCell("valor").alignment = { vertical: "top", horizontal: "right" };
-    for (const k of ["favorecido", "destinacao", "apontamentos", "parecer"]) {
+    for (const k of ["solicitante", "competente", "favorecido", "destinacao", "apontamentos", "parecer"]) {
       linha.getCell(k).alignment = { vertical: "top", wrapText: true };
     }
     // o apontamento é do sistema, não do conferente: fica marcado, não escondido
@@ -1027,7 +1247,7 @@ function abaResumo(wb) {
 
   titulo(1, "CONFERÊNCIA DE PAGAMENTOS", 16);
   ws.getCell("A2").value =
-    `Relatório de ${estado.dados.meta.dataInicio || "—"} · ${estado.itens.length} solicitações · ` +
+    `Relatório de ${textoPeriodo(estado.dados.meta) || "—"} · ${estado.itens.length} solicitações · ` +
     `R$ ${moeda(estado.dados.validacao.valorExtraido)}`;
   ws.getCell("A2").font = { name: "Calibri", size: 11, color: { argb: "FF595959" } };
   ws.getCell("A3").value = estado.dados.meta.empresa || "";
@@ -1035,7 +1255,7 @@ function abaResumo(wb) {
 
   // quantas solicitações o próprio sistema marcou — evidência de que a
   // verificação automática rodou, e quanto ela achou
-  const comApontamento = estado.itens.filter((s) => (s.alertas || []).length).length;
+  const comApontamento = estado.itens.filter(temApontamento).length;
   ws.getCell("A4").value = comApontamento
     ? `${comApontamento} solicitação(ões) com apontamento automático — ver coluna "Apontamentos"`
     : "Nenhum apontamento automático neste lote";
@@ -1132,7 +1352,7 @@ async function gerarPlanilha() {
     }
 
     const buffer = await wb.xlsx.writeBuffer();
-    const ref = (estado.dados.meta.dataInicio || "").replace(/\//g, "-");
+    const ref = textoPeriodo(estado.dados.meta).replace(/\//g, "-").replace(/ /g, "_");
     baixar(new Blob([buffer], {
       type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     }), `Conferencia_Pagamentos_${ref}.xlsx`);
@@ -1155,9 +1375,10 @@ async function gerarPlanilha() {
  */
 function consolidarLotes() {
   const lotes = [];
+  const prefixo = `${CHAVE}.${escopoUsuario()}.`;
   for (let k = 0; k < localStorage.length; k++) {
     const chave = localStorage.key(k);
-    if (!chave || !chave.startsWith(CHAVE + ".")) continue;
+    if (!chave || !chave.startsWith(prefixo)) continue;
     try {
       const v = JSON.parse(localStorage.getItem(chave));
       if (!Array.isArray(v.solicitacoes)) continue;
@@ -1178,7 +1399,8 @@ function consolidarLotes() {
     for (const s of ordenar(l.solicitacoes)) {
       const p = l.pareceres[s.sn] || {};
       linhas.push({
-        data: l.data, empresa: l.empresa, sn: s.sn, tipo: s.tipo, valor: s.valor,
+        data: l.data, empresa: l.empresa, sn: s.sn, tipo: s.tipo,
+        solicitante: s.solicitante, competente: s.competente, valor: s.valor,
         favorecido: s.favorecido, destinacao: s.destinacao,
         apontamentos: apontamentosDe(s),
         status: p.status || "Sem conferir", parecer: p.parecer || "",
@@ -1193,12 +1415,14 @@ const COLUNAS_GERAL = [
   { header: "Empresa", key: "empresa", width: 34 },
   { header: "S.N", key: "sn", width: 12 },
   { header: "Forma de pagamento", key: "tipo", width: 20 },
-  { header: "Valor (R$)", key: "valor", width: 14 },
+  { header: "Solicitante", key: "solicitante", width: 22 },
+  { header: "Competente", key: "competente", width: 22 },
   { header: "Favorecido", key: "favorecido", width: 38 },
   { header: "Destinação", key: "destinacao", width: 54 },
-  { header: "Apontamentos", key: "apontamentos", width: 38 },
+  { header: "Valor (R$)", key: "valor", width: 14 },
   { header: "Status", key: "status", width: 24 },
   { header: "Parecer", key: "parecer", width: 44 },
+  { header: "Apontamentos", key: "apontamentos", width: 38 },
 ];
 
 function abaGeral(wb, nome, linhas) {
@@ -1218,7 +1442,7 @@ function abaGeral(wb, nome, linhas) {
     });
     linha.getCell("valor").numFmt = "#,##0.00";
     linha.getCell("valor").alignment = { vertical: "top", horizontal: "right" };
-    for (const k of ["empresa", "favorecido", "destinacao", "apontamentos", "parecer"]) {
+    for (const k of ["empresa", "solicitante", "competente", "favorecido", "destinacao", "apontamentos", "parecer"]) {
       linha.getCell(k).alignment = { vertical: "top", wrapText: true };
     }
     const ap = linha.getCell("apontamentos");
@@ -1264,8 +1488,9 @@ function abaResumoGeral(wb, lotes, linhas) {
     `${lotes.length} conferência(s) · ${datas.length} dia(s) · ${linhas.length} solicitações · ` +
     `R$ ${moeda(valorTotal)}`;
   ws.getCell("A2").font = { name: "Calibri", size: 11, color: { argb: "FF595959" } };
+  const periodo = datas.length > 1 ? `${datas[0]} a ${datas[datas.length - 1]}` : datas[0];
   ws.getCell("A3").value = datas.length
-    ? `Período: ${datas[0]} a ${datas[datas.length - 1]} · gerado em ${new Date().toLocaleString("pt-BR")}`
+    ? `Período: ${periodo} · gerado em ${new Date().toLocaleString("pt-BR")}`
     : "";
   ws.getCell("A3").font = { name: "Calibri", size: 10, color: { argb: "FF808080" } };
   ws.getCell("A4").value = apontadas
@@ -1386,6 +1611,44 @@ async function gerarPlanilhaGeral() {
   }
 }
 
+/** Gera a planilha Excel de um único dia — botão "Imprimir" na linha do dia
+ *  da lista de conferências guardadas. Mesmo formato do consolidado geral
+ *  (abaResumoGeral + abaGeral), só que filtrado para as empresas daquele dia. */
+async function imprimirDia(btn, data) {
+  const rotulo = btn.textContent;
+  const aviso = (t, erro) => {
+    $("upload-msg").innerHTML = `<div class="alerta${erro ? " erro" : ""}">${t}
+      <button class="alerta__x" id="btn-fecha-planilha-geral" title="Dispensar">✕</button></div>`;
+    $("btn-fecha-planilha-geral").onclick = () => { $("upload-msg").innerHTML = ""; };
+  };
+  btn.disabled = true; btn.textContent = "Gerando…";
+  try {
+    const { lotes, linhas } = consolidarLotes();
+    const lotesDia = lotes.filter((l) => l.data === data);
+    const linhasDia = linhas.filter((l) => l.data === data);
+    if (!linhasDia.length) throw new Error(`não há conferência guardada para ${data}`);
+    await carregarExcelJS();
+    const wb = new ExcelJS.Workbook();
+    wb.creator = "NOCTUS — Conferência de Pagamentos";
+    wb.created = new Date();
+
+    abaResumoGeral(wb, lotesDia, linhasDia);
+    abaGeral(wb, "TODAS", linhasDia);
+    const apontadas = linhasDia.filter((l) => l.apontamentos);
+    if (apontadas.length) abaGeral(wb, "APONTAMENTOS", apontadas);
+
+    const buffer = await wb.xlsx.writeBuffer();
+    baixar(new Blob([buffer], {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    }), `Conferencias_${data.replace(/\//g, "-")}.xlsx`);
+    aviso(`Planilha de ${data} gerada.`, false);
+  } catch (e) {
+    aviso(`Não consegui gerar a planilha de ${data}: ${e.message}`, true);
+  } finally {
+    btn.disabled = false; btn.textContent = rotulo;
+  }
+}
+
 /* ------------------------------------------------------------------------- início */
 migrarChaves();
 ligarVoltar();
@@ -1395,3 +1658,8 @@ $("btn-planilha-geral").onclick = gerarPlanilhaGeral;
 ligarRevisao();
 ligarAnexos();
 ligarResumo();
+ligarRenovacaoDeSessao();
+if (new URLSearchParams(location.search).get("config") === "1") {
+  configAbertaViaHome = true;
+  abrirConfig();
+}
