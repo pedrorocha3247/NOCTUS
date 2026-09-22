@@ -5,7 +5,7 @@
  * localStorage e a planilha é gerada no cliente. Nenhum dado sai da máquina.
  */
 import * as pdfjsLib from "./vendor/pdf.min.mjs";
-import { parseRelatorio } from "./parser.js";
+import { parseRelatorio, parseRelatorioExcel } from "./parser.js";
 import { verificarPoder } from "./poderes.js";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc =
@@ -59,8 +59,18 @@ let estado = { dados: null, itens: [], pareceres: {}, i: 0, mesclagem: null };
  * solicitações ao longo do dia, então o relatório da tarde é o MESMO lote da
  * manhã, com mais linhas — e não uma conferência nova. Mas cada empresa tem o
  * seu relatório, então o mesmo dia pode ter vários lotes, um por empresa.
+ *
+ * O relatório em EXCEL foge dessa regra: sai com todas as empresas juntas
+ * (ver parseRelatorioExcel, em parser.js), e QUAIS empresas aparecem pode
+ * mudar entre uma exportação parcial da manhã e outra da tarde do mesmo dia
+ * (uma empresa sem solicitação ainda não aparece). Se a chave dependesse do
+ * nome das empresas encontradas, uma reimportação mais tarde no mesmo dia
+ * cairia numa chave DIFERENTE da da manhã — perderia a mesclagem de
+ * pareceres. Por isso multiEmpresa usa uma chave fixa, "todas", que não
+ * depende de quais empresas o relatório daquele momento trouxe.
  */
 const codEmpresa = (meta) => {
+  if (meta?.multiEmpresa) return "todas";
   const m = String(meta?.empresaCodigo || meta?.empresa || "").match(/^\s*(\d{1,4})/);
   if (m) return m[1];
   const nome = String(meta?.empresaNome || meta?.empresa || "").trim();
@@ -339,7 +349,17 @@ function recalcularPoderes() {
   if (!estado.dados) return;
   const otn = otnAtual();
   for (const s of estado.dados.solicitacoes) {
-    s.alertaPoder = verificarPoder(estado.dados.meta.empresaCodigo, s.competente,
+    // PDF: um empresaCodigo só, do documento inteiro. Excel (pode trazer
+    // várias empresas juntas — ver parseRelatorioExcel): cada solicitação
+    // já carrega o SEU empresaCodigo, quando a conta bancária do bloco foi
+    // reconhecida em contas.js E a empresa já tem código confirmado ali
+    // (ainda não é o caso de todas — ver ATENÇÃO em contas.js); usa esse
+    // quando existir, cai para o do documento quando não (PDF, ou Excel de
+    // uma empresa só). Sem nenhum dos dois, verificarPoder devolve null
+    // sozinho (empresa sem relação de poderes carregada) — não precisa de
+    // tratamento especial aqui.
+    const empresaCodigo = s.empresaCodigo || estado.dados.meta.empresaCodigo;
+    s.alertaPoder = verificarPoder(empresaCodigo, s.competente,
                                    s.poder, s.valor, otn);
     s.alerta10otn = s.valor > otn * LIMITE_OTN_UNICO
       ? "Solicitação ultrapassa a 10 OTN" : null;
@@ -491,21 +511,38 @@ function renderRetomar(confirmando) {
   });
 }
 
+/**
+ * Aceita o relatório em PDF ou em Excel (.xlsx/.xls) — mesmo relatório,
+ * dois formatos de exportação do SCK (ver comentário no topo de parser.js
+ * para o porquê de preferir o Excel quando ele estiver disponível). Os
+ * dois caminhos convergem no mesmo `dados` ({meta, solicitacoes,
+ * validacao}) e dali pra baixo o fluxo é idêntico.
+ */
 async function processar(arquivo) {
   const msg = $("upload-msg");
-  if (!arquivo.name.toLowerCase().endsWith(".pdf")) {
-    msg.innerHTML = `<div class="alerta erro">Envie o relatório em PDF.</div>`;
+  const nome = arquivo.name.toLowerCase();
+  const ehPdf = nome.endsWith(".pdf");
+  const ehExcel = nome.endsWith(".xlsx") || nome.endsWith(".xls");
+  if (!ehPdf && !ehExcel) {
+    msg.innerHTML = `<div class="alerta erro">Envie o relatório em PDF ou em Excel (.xlsx).</div>`;
     return;
   }
   msg.innerHTML = `<div class="alerta">Lendo o relatório…</div>`;
   try {
-    const dados = await parseRelatorio(new Uint8Array(await arquivo.arrayBuffer()), pdfjsLib);
+    let dados;
+    if (ehPdf) {
+      dados = await parseRelatorio(new Uint8Array(await arquivo.arrayBuffer()), pdfjsLib);
+    } else {
+      await carregarSheetJS();
+      dados = parseRelatorioExcel(await arquivo.arrayBuffer(), window.XLSX);
+    }
     if (!dados.solicitacoes.length) {
       msg.innerHTML = `<div class="alerta erro">Nenhuma solicitação encontrada.
         O layout do relatório mudou?</div>`;
       return;
     }
     msg.innerHTML = "";
+
     const salvo = localStorage.getItem(chaveLote(dados));
     estado.dados = dados;
     estado.i = 0;
@@ -550,11 +587,31 @@ function render() {
     if (x) x.onclick = () => { estado.mesclagem = null; $("aviso-mesclagem").innerHTML = ""; };
   }
 
-  $("aviso-extracao").innerHTML = validacao.confere ? ""
-    : `<div class="alerta erro"><b>Atenção:</b> o que extraí não bateu com os totais impressos
+  const avisoTotais = validacao.confere ? "" : `
+      <div class="alerta erro"><b>Atenção:</b> o que extraí não bateu com os totais impressos
         (${validacao.qtdExtraida} × ${validacao.qtdRelatorio} solicitações,
         R$ ${moeda(validacao.valorExtraido)} × R$ ${moeda(validacao.valorRelatorio)}).
-        Confira o PDF antes de emitir o parecer.</div>`;
+        Confira o relatório antes de emitir o parecer.</div>`;
+
+  // Só o Excel pode trazer mais de uma empresa junta e só ele pode ter uma
+  // conta de origem que não bateu com contas.js (ver parseRelatorioExcel,
+  // em parser.js) — persistente na tela inteira de conferência, não só no
+  // momento do upload, porque é informação relevante durante toda a revisão.
+  const meta = estado.dados.meta;
+  let avisoExcel = "";
+  if (meta?.formato === "excel") {
+    const semEmpresa = estado.dados.solicitacoes.filter((x) => !x.empresa).length;
+    const partes = [];
+    if (meta.multiEmpresa)
+      partes.push(`${meta.empresas.length} empresas juntas neste relatório: ${meta.empresas.join(", ")}.`);
+    if (semEmpresa)
+      partes.push(`${semEmpresa} solicitação(ões) com conta de origem não cadastrada em contas.js
+        — empresa não identificada automaticamente (veja o apontamento em cada uma).`);
+    if (partes.length)
+      avisoExcel = `<div class="alerta${semEmpresa ? " erro" : ""}">${partes.join(" ")}</div>`;
+  }
+
+  $("aviso-extracao").innerHTML = avisoTotais + avisoExcel;
 
   const s = estado.itens[estado.i];
   const total = estado.itens.length;
@@ -858,6 +915,31 @@ async function carregarExcelJS() {
     } catch (e) { /* tenta a próxima origem */ }
   }
   throw new Error("não consegui carregar a biblioteca de planilha");
+}
+
+/**
+ * Biblioteca de LEITURA de planilha (SheetJS, ~880KB) — usada só quando o
+ * relatório é enviado em .xlsx/.xls, mesmo padrão de carregarExcelJS()
+ * acima (que é só de ESCRITA, pros botões "Gerar planilha"/"Imprimir").
+ * Tenta a cópia local primeiro (já está em vendor/), cai no CDN se faltar.
+ */
+async function carregarSheetJS() {
+  if (window.XLSX) return;
+  const origens = [
+    "./vendor/xlsx.full.min.js",
+    "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js",
+  ];
+  for (const src of origens) {
+    try {
+      await new Promise((ok, falha) => {
+        const s = document.createElement("script");
+        s.src = src; s.onload = ok; s.onerror = () => falha(new Error(src));
+        document.head.appendChild(s);
+      });
+      if (window.XLSX) return;
+    } catch (e) { /* tenta a próxima origem */ }
+  }
+  throw new Error("não consegui carregar a biblioteca de leitura de planilha");
 }
 
 function baixar(blob, nome) {
@@ -1398,8 +1480,14 @@ function consolidarLotes() {
   for (const l of lotes) {
     for (const s of ordenar(l.solicitacoes)) {
       const p = l.pareceres[s.sn] || {};
+      // Lote de PDF: uma empresa só, l.empresa já resolve. Lote de Excel
+      // (pode ter várias empresas juntas — ver parseRelatorioExcel): cada
+      // solicitação carrega a SUA PRÓPRIA empresa (s.empresa), identificada
+      // pela conta bancária do bloco onde ela apareceu no relatório — usa
+      // essa quando existir, cai para l.empresa (PDF, ou Excel de 1 empresa
+      // só) quando não.
       linhas.push({
-        data: l.data, empresa: l.empresa, sn: s.sn, tipo: s.tipo,
+        data: l.data, empresa: s.empresa || l.empresa, sn: s.sn, tipo: s.tipo,
         solicitante: s.solicitante, competente: s.competente, valor: s.valor,
         favorecido: s.favorecido, destinacao: s.destinacao,
         apontamentos: apontamentosDe(s),
