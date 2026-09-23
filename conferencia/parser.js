@@ -374,7 +374,14 @@ export async function parseRelatorio(arrayBuffer, pdfjsLib) {
         if (me) { meta.empresa = L; meta.empresaCodigo = me[1]; meta.empresaNome = me[2].trim(); }
       }
       if (!meta.dataInicio) {
-        const m = L.match(/CORRENTE - (\d{2}\/\d{2}\/\d{4}) a (\d{2}\/\d{2}\/\d{4})/);
+        // formato antigo imprime "...CORRENTE - 01/09/2026 a 18/09/2026" (a
+        // minúsculo); o formato novo (ver comentário no topo do arquivo)
+        // também mudou ISSO sem aviso — "...CORRENTE - 22/09/2026 A
+        // 22/09/2026", A maiúsculo — achado em 23/09/2026 depois que um
+        // relatório do formato novo saiu com "sem data" na lista de
+        // conferências (a extração inteira funcionava, só a DATA que não
+        // batia com o regex). [Aa] cobre os dois sem exigir /i no resto.
+        const m = L.match(/CORRENTE - (\d{2}\/\d{2}\/\d{4}) [Aa] (\d{2}\/\d{2}\/\d{4})/);
         if (m) { meta.dataInicio = m[1]; meta.dataFim = m[2]; }
       }
       if (!meta.emitidoEm && /^\d{2}:\d{2}:\d{2}$/.test(L)) meta.emitidoEm = L;
