@@ -1887,13 +1887,22 @@ function abaResumoGeral(wb, lotes, linhas, plano = null) {
   cabecalho(8, o
     ? ["Data", "Aba", "Empresa", "Qtde", "Valor (R$)", "Conferidas", "Sem conferir", "Apontamentos"]
     : ["Data", "Empresa", "Qtde", "Valor (R$)", "Conferidas", "Sem conferir", "Apontamentos"]);
+  // Colunas C..A(mapeando COLUNAS_GERAL): C = S.N, I = Valor, J = Status,
+  // L = Apontamentos — usadas nas fórmulas abaixo. 100000 é só um limite
+  // generoso de linhas (nenhuma aba real chega perto disso), pra não
+  // precisar saber o tamanho exato da aba na hora de montar a fórmula
+  // (as abas de dados só são escritas DEPOIS desta, ver imprimirDia/
+  // gerarPlanilhaGeral — mas isso não afeta a fórmula, o Excel só resolve
+  // a referência quando o arquivo é aberto).
+  const escaparFormula = (t) => String(t).replace(/"/g, '""');
   let l = 9;
   for (const lote of lotes) {
-    const doLote = linhas.filter((x) => x.data === lote.data && x.empresa === lote.empresa);
+    const chave = lote.chaveEmpresa ?? lote.empresa;
     const linha = ws.getRow(l);
     linha.getCell(1).value = lote.data;
+    let aba = null;
     if (o) {
-      const aba = plano.porEmpresa.get(lote.chaveEmpresa ?? lote.empresa);
+      aba = plano.porEmpresa.get(chave);
       if (aba) {
         linha.getCell(2).value = linkAba(aba);
         linha.getCell(2).font = fonteLink;
@@ -1905,11 +1914,44 @@ function abaResumoGeral(wb, lotes, linhas, plano = null) {
       }
     }
     linha.getCell(2 + o).value = lote.empresa;
-    linha.getCell(3 + o).value = doLote.length;
-    linha.getCell(4 + o).value = doLote.reduce((a, x) => a + (x.valor || 0), 0);
-    linha.getCell(5 + o).value = doLote.filter((x) => x.status !== "Sem conferir").length;
-    linha.getCell(6 + o).value = doLote.filter((x) => x.status === "Sem conferir").length;
-    linha.getCell(7 + o).value = doLote.filter((x) => x.apontamentos).length;
+
+    // Qtde/Valor/Conferidas/Sem conferir/Apontamentos por FÓRMULA, buscando
+    // na aba de onde os dados realmente vêm — pedido do Rocha em 23/09/2026,
+    // depois do "Imprimir" do dia sair com esses números todos zerados. A
+    // causa foi lote.empresa não bater mais com o texto de linha.empresa
+    // (ver a nota em consolidarLotes, lá em cima) — e como o valor era só um
+    // número já calculado aqui, o zero ficava indistinguível de "essa
+    // empresa realmente não teve solicitação nenhuma nesse dia", sem jeito
+    // de notar o problema sem abrir a aba e contar na mão. Com fórmula, o
+    // número sempre reflete o que está de fato na aba de origem — e se essa
+    // mesma inconsistência acontecer de novo, dá pra clicar na célula,
+    // ver a fórmula e a aba que ela aponta, em vez de confiar cegamente
+    // num valor que o site já entregou pronto.
+    if (aba) {
+      // Imprimir do dia: cada empresa tem sua própria aba (ver abaGeral) —
+      // a fórmula busca direto nela, sem precisar filtrar por empresa (a
+      // aba inteira já é só daquela empresa).
+      const R = `'${aba}'!`;
+      linha.getCell(3 + o).value = { formula: `COUNTA(${R}C3:C100000)` };
+      linha.getCell(4 + o).value = { formula: `SUM(${R}I3:I100000)` };
+      linha.getCell(5 + o).value = { formula: `COUNTIFS(${R}C3:C100000,"<>",${R}J3:J100000,"<>Sem conferir")` };
+      linha.getCell(6 + o).value = { formula: `COUNTIFS(${R}C3:C100000,"<>",${R}J3:J100000,"Sem conferir")` };
+      linha.getCell(7 + o).value = { formula: `COUNTIFS(${R}C3:C100000,"<>",${R}L3:L100000,"<>")` };
+    } else {
+      // Planilha consolidada geral (gerarPlanilhaGeral): não tem uma aba por
+      // empresa, só "TODAS" com todo mundo junto — busca ali, filtrando
+      // pela empresa dessa linha da tabela.
+      const de = (plano ? 2 : 1) + 1;   // primeira linha de dado na aba TODAS
+      const crit = `"${escaparFormula(chave)}"`;
+      linha.getCell(3 + o).value = { formula: `COUNTIFS(TODAS!$B$${de}:$B$100000,${crit})` };
+      linha.getCell(4 + o).value = { formula: `SUMIFS(TODAS!$I$${de}:$I$100000,TODAS!$B$${de}:$B$100000,${crit})` };
+      linha.getCell(5 + o).value = { formula:
+        `COUNTIFS(TODAS!$B$${de}:$B$100000,${crit},TODAS!$J$${de}:$J$100000,"<>Sem conferir")` };
+      linha.getCell(6 + o).value = { formula:
+        `COUNTIFS(TODAS!$B$${de}:$B$100000,${crit},TODAS!$J$${de}:$J$100000,"Sem conferir")` };
+      linha.getCell(7 + o).value = { formula:
+        `COUNTIFS(TODAS!$B$${de}:$B$100000,${crit},TODAS!$L$${de}:$L$100000,"<>")` };
+    }
     l++;
   }
   const total = ws.getRow(l);
