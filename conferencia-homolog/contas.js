@@ -112,3 +112,44 @@ export function empresaPorConta(conta) {
   if (!alvo) return null;
   return CONTAS_EMPRESA.find((c) => normalizarConta(c.conta) === alvo) || null;
 }
+
+/**
+ * Nome OFICIAL de cada empresa, por código — a mesma "relação oficial de
+ * empresas" que o Rocha confirmou em 22/09/2026 (ver comentário de
+ * CONTAS_EMPRESA acima, onde estão os 13 códigos). Usado só pra MONTAR o
+ * rótulo "CÓDIGO - NOME" do relatório em EXCEL (parser.js: meta.empresa),
+ * no mesmo formato que o PDF já usa — mas ali o texto vem PRONTO, impresso
+ * pelo próprio SCK na caixa do cabeçalho (às vezes o nome completo, às
+ * vezes só um apelido curto tipo "SLIM" — o SCK não é consistente, não dá
+ * pra prever sem ver o PDF real de cada empresa). O Excel não traz esse
+ * texto em lugar nenhum do arquivo (conferido em 23/09/2026: só existe
+ * "Filial: 0 - Todos" uma vez, no topo, sem nome por empresa) — por isso
+ * aqui ele é MONTADO a partir do código, com o nome que o Rocha confirmou.
+ *
+ * ATENÇÃO: só 15 (Momentum) e 16 (Slim) foram conferidos contra o texto
+ * real de um PDF (ver rotuloEmpresa() abaixo) — as demais usam o nome da
+ * relação oficial tal como o Rocha passou, sem garantia de bater 100% com
+ * o texto que o SCK imprimiria no PDF daquela empresa (que pode nunca ter
+ * sido visto). Se algum dia aparecer errado, é aqui que se corrige.
+ */
+export const NOME_OFICIAL_POR_CODIGO = {
+  "13": "Praia Verde Empreendimentos e Participações S.A.",
+  "15": "Momentum Empreendimentos Imobiliários Ltda.",
+  "16": "Slim",
+  "26": "M3 Assets Holding S.A.",
+  "27": "Associação Bras. Def. do Desenv. Sust. do M. Ambiente (Abrasma)",
+  "28": "Realiza - Soluções Imobiliárias e Financeiras Ltda.",
+  "30": "Kasil",
+  "40": "RVM",
+  "70": "M5",
+  "90": "IRM (Instituto)",
+  "91": "Posto",
+  "95": "Pick Money",
+  "96": "MMH",
+};
+
+/** "15 - Momentum Empreendimentos Imobiliários Ltda." — ou null se o código não tiver nome oficial cadastrado. */
+export function rotuloEmpresa(codigo) {
+  const nome = codigo && NOME_OFICIAL_POR_CODIGO[codigo];
+  return nome ? `${codigo} - ${nome}` : null;
+}
