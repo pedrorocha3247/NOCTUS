@@ -718,7 +718,14 @@ export function parseRelatorioExcel(arrayBuffer, XLSX) {
     if (!b) continue; // linha em branco (separador visual)
 
     if (ehCabecalhoBanco(b)) {
-      if (blocoAtual.length) blocos.push(blocoAtual);
+      // O bloco que está sendo fechado agora pertence ao empresaAtual de
+      // ANTES desta linha (a conta do cabeçalho anterior) — por isso marca
+      // com empresaAtual antes de reatribuí-lo duas linhas abaixo. É o que
+      // permite separar o total impresso de cada empresa na hora de validar
+      // (ver validacaoPorEmpresa, mais abaixo) — cada bloco é sempre de UMA
+      // conta bancária só, e cada conta é de uma empresa só.
+      if (blocoAtual.length)
+        blocos.push({ empresa: empresaAtual ? empresaAtual.empresa : "", totais: blocoAtual });
       blocoAtual = [];
       contaAtual = b;
       const m = RE_CABECALHO_CONTA_EXCEL.exec(b);
@@ -772,7 +779,8 @@ export function parseRelatorioExcel(arrayBuffer, XLSX) {
       empresaCodigo: empresaAtual ? (empresaAtual.codigo || null) : null,
     });
   }
-  if (blocoAtual.length) blocos.push(blocoAtual);
+  if (blocoAtual.length)
+    blocos.push({ empresa: empresaAtual ? empresaAtual.empresa : "", totais: blocoAtual });
 
   for (const s of solicitacoes) {
     s.alertas = alertas(s);
@@ -812,27 +820,53 @@ export function parseRelatorioExcel(arrayBuffer, XLSX) {
   // total por subseção de tipo E um total agregado do bloco inteiro; se o
   // último total do bloco bater com a soma dos anteriores, é o agregado —
   // descarta antes de somar, senão os totais entram em dobro na conferência.
-  let qtdRel = 0, valorRel = 0;
-  const totaisLidos = blocos.reduce((a, b) => a + b.length, 0);
-  for (let b of blocos) {
-    if (b.length > 1) {
-      const q = b.slice(0, -1).reduce((a, x) => a + x[0], 0);
-      const v = b.slice(0, -1).reduce((a, x) => a + x[1], 0);
-      if (b[b.length - 1][0] === q && Math.abs(b[b.length - 1][1] - v) < 0.01) b = b.slice(0, -1);
+  //
+  // somarBlocosImpressos() faz essa soma pra QUALQUER subconjunto de blocos
+  // — usada abaixo tanto pro total do documento inteiro (validacao, como
+  // sempre foi) quanto pro total de CADA empresa sozinha (validacaoPorEmpresa,
+  // novo em 23/09/2026): como cada bloco já sai marcado com a empresa da
+  // conta bancária dele (empresaPorConta, acima), dá pra somar só os blocos
+  // de uma empresa e comparar com as solicitações extraídas SÓ dela — uma
+  // conferência de verdade por empresa, não a mesma validação global
+  // repetida pra todas quando o Excel divide numa conferência por empresa
+  // (ver dividirPorEmpresa em conferencia.js).
+  function somarBlocosImpressos(subset) {
+    let qtd = 0, valor = 0, totaisLidos = 0;
+    for (let bloco of subset) {
+      let b = bloco.totais;
+      totaisLidos += b.length;
+      if (b.length > 1) {
+        const q = b.slice(0, -1).reduce((a, x) => a + x[0], 0);
+        const v = b.slice(0, -1).reduce((a, x) => a + x[1], 0);
+        if (b[b.length - 1][0] === q && Math.abs(b[b.length - 1][1] - v) < 0.01) b = b.slice(0, -1);
+      }
+      qtd += b.reduce((a, x) => a + x[0], 0);
+      valor += b.reduce((a, x) => a + x[1], 0);
     }
-    qtdRel += b.reduce((a, x) => a + x[0], 0);
-    valorRel += b.reduce((a, x) => a + x[1], 0);
+    return { qtd, valor: Math.round(valor * 100) / 100, totaisLidos };
   }
-  const valorExtraido = Math.round(solicitacoes.reduce((a, s) => a + (s.valor || 0), 0) * 100) / 100;
-  valorRel = Math.round(valorRel * 100) / 100;
+  function validar(solicitacoesSubset, blocosSubset) {
+    const { qtd: qtdRelatorio, valor: valorRelatorio, totaisLidos } = somarBlocosImpressos(blocosSubset);
+    const valorExtraido = Math.round(solicitacoesSubset.reduce((a, s) => a + (s.valor || 0), 0) * 100) / 100;
+    return {
+      qtdExtraida: solicitacoesSubset.length, valorExtraido,
+      qtdRelatorio, valorRelatorio,
+      totaisLidos, blocos: blocosSubset.length,
+      confere: solicitacoesSubset.length === qtdRelatorio && Math.abs(valorExtraido - valorRelatorio) < 0.01,
+    };
+  }
 
-  return {
-    meta, solicitacoes,
-    validacao: {
-      qtdExtraida: solicitacoes.length, valorExtraido,
-      qtdRelatorio: qtdRel, valorRelatorio: valorRel,
-      totaisLidos, blocos: blocos.length,
-      confere: solicitacoes.length === qtdRel && Math.abs(valorExtraido - valorRel) < 0.01,
-    },
-  };
+  const validacao = validar(solicitacoes, blocos);
+
+  // nome curto ("" = conta não cadastrada em contas.js) -> validação feita
+  // só com as solicitações e os blocos (contas bancárias) daquela empresa.
+  const validacaoPorEmpresa = {};
+  for (const chave of new Set(blocos.map((b) => b.empresa))) {
+    validacaoPorEmpresa[chave] = validar(
+      solicitacoes.filter((s) => (s.empresa || "") === chave),
+      blocos.filter((b) => b.empresa === chave),
+    );
+  }
+
+  return { meta, solicitacoes, validacao, validacaoPorEmpresa };
 }
