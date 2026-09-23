@@ -655,10 +655,22 @@ function processarMultiEmpresa(dados) {
     resumos.push(`${nomeEmpresa(parte.meta)} (${parte.solicitacoes.length}${notaMerge})`);
   }
 
-  $("upload-msg").innerHTML = `<div class="alerta ok">
-    Relatório em Excel com ${partes.length} empresa${partes.length > 1 ? "s" : ""} juntas:
-    cada uma virou (ou atualizou) a sua própria conferência, separada das demais —
-    ${resumos.join("; ")}. Escolha uma abaixo para continuar.</div>`;
+  // Pedido do Rocha em 23/09/2026: a mensagem antiga listava o detalhe de
+  // TODAS as empresas na cara, ficando enorme — vira ruído toda vez que se
+  // importa um Excel. Agora o texto principal é curto (dispensável com o
+  // ✕, como o aviso de mesclagem acima) e o detalhe por empresa — que ainda
+  // é informação de auditoria útil (quantas solicitações entraram em cada
+  // uma, e quantas foram mescladas) — fica atrás de "Ver detalhes",
+  // recolhido por padrão em vez de sumir de vez.
+  $("upload-msg").innerHTML = `<div class="alerta ok alerta--removivel">
+    <b>Relatório importado com sucesso.</b> ${partes.length}
+    empresa${partes.length > 1 ? "s" : ""} atualizada${partes.length > 1 ? "s" : ""},
+    cada uma na sua própria conferência. Escolha uma abaixo para continuar.
+    <details class="upload-msg__detalhe"><summary>Ver detalhes</summary>${resumos.join("; ")}</details>
+    <button class="alerta__x" id="btn-fecha-upload-msg" title="Dispensar">✕</button>
+  </div>`;
+  const btnFechaUpload = $("btn-fecha-upload-msg");
+  if (btnFechaUpload) btnFechaUpload.onclick = () => { $("upload-msg").innerHTML = ""; };
   irPara("upload");
   renderRetomar();
 }
