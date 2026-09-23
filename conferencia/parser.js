@@ -45,7 +45,7 @@
  * (o Excel sai com todas as empresas juntas, ao contrário do PDF).
  */
 
-import { empresaPorConta } from "./contas.js";
+import { empresaPorConta, rotuloEmpresa } from "./contas.js";
 
 // Duas famílias de layout convivem no relatório ANTIGO.
 // A: TRANSFERÊNCIA / TED / PIX      (cabeçalho "S.N" em x >= 31)
@@ -791,12 +791,21 @@ export function parseRelatorioExcel(arrayBuffer, XLSX) {
   // meta.empresa é o rótulo de EXIBIÇÃO (conferencia.js: nomeEmpresa/
   // codEmpresa) — sempre preenchido, mesmo com várias empresas juntas, pra
   // nunca aparecer "Empresa não identificada" quando na verdade dá, sim,
-  // pra dizer quais são.
+  // pra dizer quais são. Mesmo formato "CÓDIGO - NOME" que o PDF usa (ver
+  // meta.empresa em parseRelatorio, acima) — mas ali o texto vem PRONTO do
+  // próprio SCK (impresso na caixa do cabeçalho); aqui ele é MONTADO a
+  // partir do código + da relação oficial em contas.js (rotuloEmpresa()),
+  // porque o Excel não traz esse texto em lugar nenhum do arquivo. Cai pro
+  // nome curto de contas.js quando o código não tem nome oficial cadastrado.
+  const rotuloDe = (nomeCurto) => {
+    const cod = solicitacoes.find((s) => s.empresa === nomeCurto && s.empresaCodigo)?.empresaCodigo;
+    return rotuloEmpresa(cod) || nomeCurto;
+  };
   meta.empresa = meta.empresas.length === 0
     ? "Empresa não identificada"
     : meta.empresas.length === 1
-    ? meta.empresas[0]
-    : `Múltiplas empresas (${meta.empresas.join(", ")})`;
+    ? rotuloDe(meta.empresas[0])
+    : `Múltiplas empresas (${meta.empresas.map(rotuloDe).join(", ")})`;
 
   // Confere o extraído contra os totais impressos no rodapé de cada bloco —
   // MESMA lógica do PDF (parseRelatorio, acima): cada bloco imprime um
