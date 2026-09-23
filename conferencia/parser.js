@@ -46,6 +46,7 @@
  */
 
 import { empresaPorConta, rotuloEmpresa } from "./contas.js";
+import { verificarGrupoEconomico } from "./grupoEconomico.js";
 
 // Duas famílias de layout convivem no relatório ANTIGO.
 // A: TRANSFERÊNCIA / TED / PIX      (cabeçalho "S.N" em x >= 31)
@@ -496,6 +497,11 @@ function alertas(s) {
   if (doc && nfs.length && nfs.every((v) => parseInt(v, 10) !== parseInt(doc, 10)))
     out.push(`Documento cadastrado (${doc}) diverge da NF citada (${nfs.join("/")})`);
   if (!s.poder.trim()) out.push("Poder não informado");
+  // Pedido do Rocha em 23/09/2026: alertar sempre que o CNPJ do favorecido
+  // for de uma empresa do próprio grupo (ver grupoEconomico.js) — roda pra
+  // toda solicitação, PDF ou Excel, porque as duas passam por alertas(s).
+  const grupo = verificarGrupoEconomico(s.cpfCnpj);
+  if (grupo) out.push(grupo);
   return out;
 }
 
