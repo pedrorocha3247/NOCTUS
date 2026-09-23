@@ -126,23 +126,47 @@ export function empresaPorConta(conta) {
  * "Filial: 0 - Todos" uma vez, no topo, sem nome por empresa) — por isso
  * aqui ele é MONTADO a partir do código, com o nome que o Rocha confirmou.
  *
- * ATENÇÃO: só 15 (Momentum) e 16 (Slim) foram conferidos contra o texto
- * real de um PDF (ver rotuloEmpresa() abaixo) — as demais usam o nome da
- * relação oficial tal como o Rocha passou, sem garantia de bater 100% com
- * o texto que o SCK imprimiria no PDF daquela empresa (que pode nunca ter
- * sido visto). Se algum dia aparecer errado, é aqui que se corrige.
+ * ATENÇÃO — regra confirmada pelo Rocha em 23/09/2026: o nome aqui precisa
+ * ser IDÊNTICO ao texto que o próprio SCK imprime no PDF daquela empresa —
+ * não uma versão "arrumada" (Title Case, com acentuação corrigida, etc.).
+ * Só que o SCK não é consistente ENTRE empresas: cada nome é o que foi
+ * digitado no cadastro daquela empresa dentro do SCK, então uma pode sair
+ * com acento e cedilha (13) e outra sem (15, 30), uma por extenso (15, 90)
+ * e outra só a sigla/apelido (16). Não dá pra normalizar por regra — só
+ * conferindo o PDF real de cada empresa.
+ *
+ * Confirmados contra o texto real de um PDF (ou, no caso de 13/30, contra o
+ * grupo "sem data" da tela de retomada, que carrega solicitações extraídas
+ * de PDF real — mesma fonte, mesma garantia):
+ *   13 - achado em 23/09/2026 (tela "sem data")
+ *   15, 16 - conferidos por extração direta de PDF real (pdftotext)
+ *   30, 90 - achados em 23/09/2026 (tela "sem data"); o 90 foi o que revelou
+ *            o problema: a relação oficial trazia "IRM (Instituto)" — o
+ *            apelido/sigla que o Rocha usa no dia a dia — mas o PDF do SCK
+ *            imprime "INSTITUTO RUBENS MENEGHETTI" por extenso. O Excel
+ *            dessa empresa tinha saído como "90 - IRM (Instituto)" em vez
+ *            de bater com o que o PDF sempre mostrou — foi daí que veio
+ *            esta regra.
+ *
+ * As demais 8 entradas (26, 27, 28, 40, 70, 91, 95, 96) NÃO têm essa
+ * garantia — usam o nome da relação oficial tal como o Rocha passou
+ * informalmente, sem confirmação contra um PDF real daquela empresa (que
+ * pode nunca ter sido visto). A relação oficial é confiável para o CÓDIGO
+ * de cada empresa, mas não necessariamente para o NOME por extenso — pontos
+ * a validar assim que aparecer um PDF real de cada uma pra comparar. Se
+ * algum dia aparecer errado, é aqui que se corrige.
  */
 export const NOME_OFICIAL_POR_CODIGO = {
-  "13": "Praia Verde Empreendimentos e Participações S.A.",
-  "15": "Momentum Empreendimentos Imobiliários Ltda.",
-  "16": "Slim",
+  "13": "PRAIA VERDE EMPREENDIMENTOS E PARTICIPAÇÕES S.A",
+  "15": "MOMENTUM EMPREENDIMENTOS IMOBILIARIOS LTDA.",
+  "16": "SLIM",
   "26": "M3 Assets Holding S.A.",
   "27": "Associação Bras. Def. do Desenv. Sust. do M. Ambiente (Abrasma)",
   "28": "Realiza - Soluções Imobiliárias e Financeiras Ltda.",
-  "30": "Kasil",
+  "30": "KASIL PARTICIPACOES LTDA.",
   "40": "RVM",
   "70": "M5",
-  "90": "IRM (Instituto)",
+  "90": "INSTITUTO RUBENS MENEGHETTI",
   "91": "Posto",
   "95": "Pick Money",
   "96": "MMH",
