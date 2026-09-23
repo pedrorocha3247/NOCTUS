@@ -147,29 +147,39 @@ export function empresaPorConta(conta) {
  *            dessa empresa tinha saído como "90 - IRM (Instituto)" em vez
  *            de bater com o que o PDF sempre mostrou — foi daí que veio
  *            esta regra.
+ *   26, 28, 40, 70, 91, 95, 96 - confirmados pelo Rocha em 23/09/2026 (tela
+ *            "sem data"), fechando a lacuna que este comentário apontava:
+ *            eram as 7 entradas que só tinham o nome da relação oficial,
+ *            sem checagem contra PDF real. Note as diferenças de caixa e
+ *            acentuação em relação ao que estava aqui antes (ex.: "M3
+ *            Assets Holding S.A." virou "M3 ASSETS HOLDING S.A.", "RVM"
+ *            sozinho virou o nome por extenso) — é exatamente o padrão já
+ *            visto em 13/15/16/30/90: o PDF manda, mesmo quando "foge" da
+ *            formatação bonita da relação oficial.
  *
- * As demais 8 entradas (26, 27, 28, 40, 70, 91, 95, 96) NÃO têm essa
- * garantia — usam o nome da relação oficial tal como o Rocha passou
- * informalmente, sem confirmação contra um PDF real daquela empresa (que
- * pode nunca ter sido visto). A relação oficial é confiável para o CÓDIGO
- * de cada empresa, mas não necessariamente para o NOME por extenso — pontos
- * a validar assim que aparecer um PDF real de cada uma pra comparar. Se
- * algum dia aparecer errado, é aqui que se corrige.
+ * EXCEÇÃO — código 27: o PDF do SCK imprime "ASSOCIACAO BRAS.DEF.DO
+ * DESENV.SUST.DO M.AMBIENTE" (confirmado em 23/09/2026, mesma fonte acima),
+ * mas por pedido explícito do Rocha o rótulo aqui usa o apelido curto
+ * "ABRASMA" em vez do nome oficial por extenso — o nome completo deixava o
+ * rótulo "código - nome" grande demais nas telas/planilhas que o exibem.
+ * Este é o ÚNICO código da tabela que foge de propósito da regra "idêntico
+ * ao PDF" no parágrafo acima — não "corrija de volta" pro texto do PDF
+ * achando que é uma divergência esquecida; é intencional.
  */
 export const NOME_OFICIAL_POR_CODIGO = {
   "13": "PRAIA VERDE EMPREENDIMENTOS E PARTICIPAÇÕES S.A",
   "15": "MOMENTUM EMPREENDIMENTOS IMOBILIARIOS LTDA.",
   "16": "SLIM",
-  "26": "M3 Assets Holding S.A.",
-  "27": "Associação Bras. Def. do Desenv. Sust. do M. Ambiente (Abrasma)",
-  "28": "Realiza - Soluções Imobiliárias e Financeiras Ltda.",
+  "26": "M3 ASSETS HOLDING S.A.",
+  "27": "ABRASMA",
+  "28": "REALIZA - SOLUÇÕES IMOBILIÁRIAS E FINANCEIRAS LTDA",
   "30": "KASIL PARTICIPACOES LTDA.",
-  "40": "RVM",
-  "70": "M5",
+  "40": "RVM EMPREENDIMENTOS IMOBILIÁRIOS LTDA.",
+  "70": "M5 EMPREENDIMENTOS IMOBILIÁRIOS S.A.",
   "90": "INSTITUTO RUBENS MENEGHETTI",
-  "91": "Posto",
-  "95": "Pick Money",
-  "96": "MMH",
+  "91": "POSTO SANTA BARBARA",
+  "95": "PICK MONEY COMPANHIA SECURITIZADORA DE CREDITOS",
+  "96": "MMH HOLDING S.A.",
 };
 
 /** "15 - Momentum Empreendimentos Imobiliários Ltda." — ou null se o código não tiver nome oficial cadastrado. */
