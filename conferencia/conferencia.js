@@ -1676,8 +1676,20 @@ function consolidarLotes() {
       // pela conta bancária do bloco onde ela apareceu no relatório — usa
       // essa quando existir, cai para l.empresa (PDF, ou Excel de 1 empresa
       // só) quando não.
+      const empresaLinha = s.empresa || l.empresa;
+      // achado em 23/09/2026 (bug do "Imprimir" do dia, ver abaResumoGeral):
+      // desde que o Excel multiempresa virou uma conferência por empresa
+      // (dividirPorEmpresa, em cima), l.empresa é o rótulo "código - NOME
+      // OFICIAL" (rotuloEmpresa) mas s.empresa aqui embaixo é o nome curto
+      // interno ("Praia Verde", não "13 - PRAIA VERDE...") — os dois
+      // deixaram de ser a mesma string. plano.porEmpresa (montado a partir
+      // de linhas[].empresa, ou seja, do nome CURTO) precisa dessa mesma
+      // chave curta pra achar a aba do lote, não do rótulo bonito — por
+      // isso guarda a chave aqui, separada do rótulo que continua em
+      // l.empresa pra exibição.
+      if (l.chaveEmpresa === undefined) l.chaveEmpresa = empresaLinha;
       linhas.push({
-        data: l.data, empresa: s.empresa || l.empresa, sn: s.sn, tipo: s.tipo,
+        data: l.data, empresa: empresaLinha, sn: s.sn, tipo: s.tipo,
         solicitante: s.solicitante, competente: s.competente, valor: s.valor,
         favorecido: s.favorecido, destinacao: s.destinacao,
         apontamentos: apontamentosDe(s),
@@ -1712,9 +1724,12 @@ const ABAS_EMPRESA = [
 const semAcento = (t) => String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
 const letraColuna = (n) => { let s = ""; for (; n > 0; n = Math.floor((n - 1) / 26)) s = String.fromCharCode(65 + ((n - 1) % 26)) + s; return s; };
 // Link interno = fórmula HYPERLINK (salto padrão do Excel). Aspas simples: "M3" parece célula.
+// String(...) nos dois: acontece de menos vir undefined aqui (achado em
+// 23/09/2026 — ver a nota em consolidarLotes) e sem isso o HYPERLINK
+// quebra a planilha inteira em vez de só ficar com uma célula estranha.
 const linkAba = (aba, rotulo = aba) => ({
-  formula: `HYPERLINK("#'${aba.replace(/'/g, "''")}'!A1","${rotulo.replace(/"/g, '""')}")`,
-  result: rotulo,
+  formula: `HYPERLINK("#'${String(aba).replace(/'/g, "''")}'!A1","${String(rotulo).replace(/"/g, '""')}")`,
+  result: String(rotulo),
 });
 
 function nomeAbaEmpresa(empresa) {
@@ -1878,9 +1893,16 @@ function abaResumoGeral(wb, lotes, linhas, plano = null) {
     const linha = ws.getRow(l);
     linha.getCell(1).value = lote.data;
     if (o) {
-      const aba = plano.porEmpresa.get(lote.empresa);
-      linha.getCell(2).value = linkAba(aba);
-      linha.getCell(2).font = fonteLink;
+      const aba = plano.porEmpresa.get(lote.chaveEmpresa ?? lote.empresa);
+      if (aba) {
+        linha.getCell(2).value = linkAba(aba);
+        linha.getCell(2).font = fonteLink;
+      } else {
+        // não deveria acontecer (toda linha de "linhas" tem uma aba em
+        // plano.porEmpresa — ver planoAbasEmpresa), mas se acontecer é
+        // melhor a planilha sair sem o link do que não sair nenhuma.
+        linha.getCell(2).value = "—";
+      }
     }
     linha.getCell(2 + o).value = lote.empresa;
     linha.getCell(3 + o).value = doLote.length;
