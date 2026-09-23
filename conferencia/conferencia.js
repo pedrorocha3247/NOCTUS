@@ -52,7 +52,7 @@ const otnAtual = () => {
   return isFinite(v) && v > 0 ? v : OTN_PADRAO;
 };
 
-let estado = { dados: null, itens: [], pareceres: {}, i: 0, mesclagem: null };
+let estado = { dados: null, itens: [], pareceres: {}, i: 0, mesclagem: null, avisoOrigemDispensado: false };
 
 /* ---------------------------------------------------------------- persistência */
 /**
@@ -267,6 +267,7 @@ function lotesSalvos() {
 function carregar(chave, destino) {
   const v = JSON.parse(localStorage.getItem(chave));
   estado.dados = { meta: v.meta, validacao: v.validacao, solicitacoes: v.solicitacoes };
+  estado.avisoOrigemDispensado = false;
   estado.pareceres = v.pareceres || {};
   estado.itens = ordenar(v.solicitacoes, estado.pareceres);
   estado.i = Math.min(v.i || 0, estado.itens.length - 1);
@@ -718,6 +719,7 @@ async function processar(arquivo) {
     const salvo = localStorage.getItem(chaveLote(dados));
     estado.dados = dados;
     estado.i = 0;
+    estado.avisoOrigemDispensado = false;
     recalcularPoderes();
 
     if (salvo) {
@@ -770,22 +772,36 @@ function render() {
   // multiempresa (ver dividirPorEmpresa) carrega origemMultiEmpresa —
   // persistente na tela inteira de conferência, não só no momento do
   // upload, porque é informação relevante durante toda a revisão.
+  //
+  // "veio de um Excel com N empresas" é só contexto (não pede nenhuma ação
+  // do Rocha) — pedido dele em 23/09/2026 pra poder tirar da tela depois de
+  // ler uma vez, daí o ✕ (mesmo padrão do aviso de mesclagem acima), com o
+  // estado guardado em avisoOrigemDispensado pra não voltar a cada re-render
+  // (troca de solicitação, parecer salvo, etc.) dentro da MESMA conferência
+  // — zerado de novo sempre que uma conferência diferente é aberta (ver
+  // processar() e carregar()). Já "empresa não identificada" fica de fora
+  // dessa dispensa de propósito: aponta solicitação(ões) específica(s) sem
+  // conta cadastrada, isso é um risco de verdade (pode ser poder mal
+  // conferido) e não deve sumir da tela sem o Rocha resolver.
   const meta = estado.dados.meta;
   let avisoExcel = "";
   if (meta?.formato === "excel") {
     const semEmpresa = estado.dados.solicitacoes.filter((x) => !x.empresa).length;
-    const partes = [];
-    if (meta.origemMultiEmpresa?.empresas?.length)
-      partes.push(`Este relatório veio de um Excel com várias empresas juntas — as demais
-        (${meta.origemMultiEmpresa.empresas.join(", ")}) viraram conferências separadas.`);
+    if (meta.origemMultiEmpresa?.empresas?.length && !estado.avisoOrigemDispensado) {
+      avisoExcel += `<div class="alerta alerta--removivel">
+        Este relatório veio de um Excel com várias empresas juntas — as demais
+        (${meta.origemMultiEmpresa.empresas.join(", ")}) viraram conferências separadas.
+        <button class="alerta__x" id="btn-fecha-origem" title="Dispensar">✕</button>
+      </div>`;
+    }
     if (semEmpresa)
-      partes.push(`${semEmpresa} solicitação(ões) com conta de origem não cadastrada em contas.js
-        — empresa não identificada automaticamente (veja o apontamento em cada uma).`);
-    if (partes.length)
-      avisoExcel = `<div class="alerta${semEmpresa ? " erro" : ""}">${partes.join(" ")}</div>`;
+      avisoExcel += `<div class="alerta erro">${semEmpresa} solicitação(ões) com conta de origem não cadastrada em contas.js
+        — empresa não identificada automaticamente (veja o apontamento em cada uma).</div>`;
   }
 
   $("aviso-extracao").innerHTML = avisoTotais + avisoExcel;
+  const btnFechaOrigem = $("btn-fecha-origem");
+  if (btnFechaOrigem) btnFechaOrigem.onclick = () => { estado.avisoOrigemDispensado = true; render(); };
 
   const s = estado.itens[estado.i];
   const total = estado.itens.length;
