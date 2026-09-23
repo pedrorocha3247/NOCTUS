@@ -7,6 +7,7 @@
 import * as pdfjsLib from "./vendor/pdf.min.mjs";
 import { parseRelatorio, parseRelatorioExcel } from "./parser.js";
 import { verificarPoder } from "./poderes.js";
+import { rotuloEmpresa } from "./contas.js";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc =
   new URL("./vendor/pdf.worker.min.mjs", import.meta.url).href;
@@ -60,14 +61,17 @@ let estado = { dados: null, itens: [], pareceres: {}, i: 0, mesclagem: null };
  * manhã, com mais linhas — e não uma conferência nova. Mas cada empresa tem o
  * seu relatório, então o mesmo dia pode ter vários lotes, um por empresa.
  *
- * O relatório em EXCEL foge dessa regra: sai com todas as empresas juntas
- * (ver parseRelatorioExcel, em parser.js), e QUAIS empresas aparecem pode
- * mudar entre uma exportação parcial da manhã e outra da tarde do mesmo dia
- * (uma empresa sem solicitação ainda não aparece). Se a chave dependesse do
- * nome das empresas encontradas, uma reimportação mais tarde no mesmo dia
- * cairia numa chave DIFERENTE da da manhã — perderia a mesclagem de
- * pareceres. Por isso multiEmpresa usa uma chave fixa, "todas", que não
- * depende de quais empresas o relatório daquele momento trouxe.
+ * O relatório em EXCEL foge dessa regra na origem: sai com todas as empresas
+ * juntas num arquivo só (ver parseRelatorioExcel, em parser.js). Até
+ * 22/09/2026 isso virava UMA conferência mista, com uma chave fixa "todas" —
+ * ruim pra emitir parecer por empresa. Desde 23/09/2026 (dividirPorEmpresa/
+ * processarMultiEmpresa, em conferencia.js) cada empresa do Excel vira a sua
+ * PRÓPRIA conferência, com a MESMA chave por código que o PDF sempre usou —
+ * por isso este `if` abaixo não deveria mais disparar em uso normal; fica só
+ * como salvaguarda (por exemplo se algum dia alguém chamar chaveLote/
+ * codEmpresa direto com o `dados` cru do parser, sem passar por
+ * dividirPorEmpresa primeiro). Lotes ".etodas" salvos ANTES dessa mudança são
+ * migrados automaticamente (ver o fim de migrarChaves).
  */
 const codEmpresa = (meta) => {
   if (meta?.multiEmpresa) return "todas";
@@ -210,6 +214,35 @@ function migrarChaves() {
         localStorage.removeItem(chave);
       }
     }
+    // lotes ".etodas": Excel com várias empresas juntas numa ÚNICA
+    // conferência, do jeito que o sistema salvava antes de 23/09/2026 —
+    // separa em uma conferência por empresa (mesma regra de
+    // dividirPorEmpresa/processarMultiEmpresa que passou a valer pra
+    // upload novo dali pra frente), preservando o escopo do usuário dono do
+    // lote (não necessariamente o usuário atual, se o navegador for
+    // compartilhado) e os pareceres já dados, reagrupados por empresa.
+    for (const chave of Object.keys(localStorage)) {
+      const m = chave.match(new RegExp(`^${CHAVE}\\.(.+)\\.(\\d{2}-\\d{2}-\\d{4})\\.etodas$`));
+      if (!m) continue;
+      const [, escopo, data] = m;
+      const v = JSON.parse(localStorage.getItem(chave));
+      if (!v?.meta?.multiEmpresa || !Array.isArray(v.solicitacoes)) continue;
+      const partes = dividirPorEmpresa({ meta: v.meta, solicitacoes: v.solicitacoes, validacao: v.validacao });
+      for (const parte of partes) {
+        calcularPoderes(parte.meta, parte.solicitacoes); // OTN pode ter mudado desde o save original
+        const snsDaParte = new Set(parte.solicitacoes.map((s) => s.sn));
+        const pareceresDaParte = {};
+        for (const [sn, p] of Object.entries(v.pareceres || {}))
+          if (snsDaParte.has(sn)) pareceresDaParte[sn] = p;
+        const destino = `${CHAVE}.${escopo}.${data}.e${codEmpresa(parte.meta)}`;
+        if (!localStorage.getItem(destino))
+          localStorage.setItem(destino, JSON.stringify({
+            meta: parte.meta, validacao: parte.validacao,
+            solicitacoes: parte.solicitacoes, pareceres: pareceresDaParte, i: 0,
+          }));
+      }
+      localStorage.removeItem(chave);
+    }
   } catch (e) { /* modo privado ou entrada corrompida: segue sem migrar */ }
 }
 
@@ -345,10 +378,17 @@ function fecharConfig() {
  */
 const LIMITE_OTN_UNICO = 10;
 
-function recalcularPoderes() {
-  if (!estado.dados) return;
+/**
+ * Calcula (e grava em cada solicitação) o apontamento de poder e o de 10 OTN
+ * único, pro par (meta, solicitacoes) dado — função pura, sem depender de
+ * `estado`, pra poder rodar também sobre um pedaço dividido de um Excel
+ * multiempresa (processarMultiEmpresa/migrarChaves) ANTES dele existir em
+ * `estado.dados`. `recalcularPoderes()` abaixo é só o atalho pro caso normal
+ * (a conferência atualmente aberta em `estado`).
+ */
+function calcularPoderes(meta, solicitacoes) {
   const otn = otnAtual();
-  for (const s of estado.dados.solicitacoes) {
+  for (const s of solicitacoes) {
     // PDF: um empresaCodigo só, do documento inteiro. Excel (pode trazer
     // várias empresas juntas — ver parseRelatorioExcel): cada solicitação
     // já carrega o SEU empresaCodigo, quando a conta bancária do bloco foi
@@ -358,12 +398,17 @@ function recalcularPoderes() {
     // uma empresa só). Sem nenhum dos dois, verificarPoder devolve null
     // sozinho (empresa sem relação de poderes carregada) — não precisa de
     // tratamento especial aqui.
-    const empresaCodigo = s.empresaCodigo || estado.dados.meta.empresaCodigo;
+    const empresaCodigo = s.empresaCodigo || meta.empresaCodigo;
     s.alertaPoder = verificarPoder(empresaCodigo, s.competente,
                                    s.poder, s.valor, otn);
     s.alerta10otn = s.valor > otn * LIMITE_OTN_UNICO
       ? "Solicitação ultrapassa a 10 OTN" : null;
   }
+}
+
+function recalcularPoderes() {
+  if (!estado.dados) return;
+  calcularPoderes(estado.dados.meta, estado.dados.solicitacoes);
 }
 
 function salvarOtn(v) {
@@ -512,11 +557,120 @@ function renderRetomar(confirmando) {
 }
 
 /**
+ * Divide um relatório em Excel com várias empresas juntas (dados.meta.
+ * multiEmpresa) numa lista de pedaços — um por empresa —, cada um já no
+ * mesmo formato {meta, solicitacoes, validacao} de um relatório de UMA
+ * empresa só (PDF, ou Excel que já veio de uma empresa única). Pedido do
+ * Rocha em 23/09/2026: antes, um Excel com N empresas virava UMA conferência
+ * só ("Múltiplas empresas (...)"), com os pareceres de todas misturados —
+ * ruim pra emitir parecer por empresa e pra bater com o jeito que o PDF
+ * sempre funcionou (uma conferência por empresa). A validação de totais de
+ * cada pedaço (validacaoPorEmpresa, calculada em parseRelatorioExcel a
+ * partir do total IMPRESSO das contas bancárias daquela empresa) é real,
+ * não a validação do documento inteiro repetida pra todas — ver o
+ * comentário de somarBlocosImpressos em parser.js.
+ *
+ * Solicitações com conta de origem não cadastrada em contas.js (empresa não
+ * identificada automaticamente) viram seu próprio pedaço, "Empresa não
+ * identificada" — não desaparecem nem ficam misturadas dentro de nenhuma
+ * empresa de verdade.
+ */
+function dividirPorEmpresa(dados) {
+  const { meta, solicitacoes, validacaoPorEmpresa } = dados;
+
+  // nome curto -> código de empresa: o primeiro que aparecer com código,
+  // mesma regra que parseRelatorioExcel já usa pra montar o rótulo combinado.
+  const codigoDoNome = new Map();
+  for (const s of solicitacoes) {
+    if (s.empresa && s.empresaCodigo && !codigoDoNome.has(s.empresa))
+      codigoDoNome.set(s.empresa, s.empresaCodigo);
+  }
+  const rotuloDoNome = (nomeCurto) => rotuloEmpresa(codigoDoNome.get(nomeCurto)) || nomeCurto;
+
+  const grupos = new Map(); // chave "" = sem empresa identificada
+  for (const s of solicitacoes) {
+    const chave = s.empresa || "";
+    if (!grupos.has(chave)) grupos.set(chave, []);
+    grupos.get(chave).push(s);
+  }
+  // ordem estável: empresas na ordem em que apareceram no arquivo, "sem
+  // empresa" por último quando existir.
+  const ordem = [...meta.empresas, ...(grupos.has("") ? [""] : [])];
+
+  return ordem.filter((chave) => grupos.has(chave)).map((chave) => {
+    const sols = grupos.get(chave);
+    const semEmpresa = chave === "";
+    const rotuloDaChave = (c) => (c === "" ? "Empresa não identificada" : rotuloDoNome(c));
+    return {
+      meta: {
+        ...meta,
+        empresa: rotuloDaChave(chave),
+        empresaCodigo: semEmpresa ? null : (codigoDoNome.get(chave) || null),
+        empresaNome: semEmpresa ? null : chave,
+        empresas: semEmpresa ? [] : [chave],
+        multiEmpresa: false,
+        // pra quem retomar este pedaço saber de onde ele veio (ver aviso em
+        // render()) — não usado por mais nada, só informativo.
+        origemMultiEmpresa: { empresas: ordem.filter((c) => c !== chave).map(rotuloDaChave) },
+      },
+      solicitacoes: sols,
+      validacao: validacaoPorEmpresa?.[chave] || dados.validacao,
+    };
+  });
+}
+
+/**
+ * Excel com várias empresas juntas: cada empresa vira (ou atualiza) a sua
+ * PRÓPRIA conferência salva, mesclada com a que já estava em andamento pra
+ * ela — mesma lógica de mesclar() de sempre, uma vez por empresa. Não abre
+ * nenhuma automaticamente — não haveria uma escolha óbvia entre N empresas —
+ * só salva todas e volta pra tela inicial, com a lista de "Conferências em
+ * andamento" já mostrando cada uma separada.
+ */
+function processarMultiEmpresa(dados) {
+  const partes = dividirPorEmpresa(dados);
+  const resumos = [];
+  for (const parte of partes) {
+    // mesmo cálculo que um upload de empresa única já fazia antes de salvar
+    // (recalcularPoderes) — sem isso, o apontamento de poder só apareceria
+    // na planilha impressa depois que alguém abrisse ("Retomar") esta
+    // empresa pelo menos uma vez.
+    calcularPoderes(parte.meta, parte.solicitacoes);
+    const chave = chaveLote(parte);
+    const salvoAnterior = localStorage.getItem(chave);
+    let pareceres = {}, notaMerge = "";
+    if (salvoAnterior) {
+      const r = mesclar(JSON.parse(salvoAnterior), parte);
+      pareceres = r.pareceres;
+      const partes2 = [r.novas.length && `${r.novas.length} nova(s)`,
+                        r.alteradas.length && `${r.alteradas.length} alterada(s)`].filter(Boolean);
+      if (partes2.length) notaMerge = ` — ${partes2.join(", ")}`;
+    }
+    try {
+      localStorage.setItem(chave, JSON.stringify({
+        meta: parte.meta, validacao: parte.validacao,
+        solicitacoes: parte.solicitacoes, pareceres, i: 0,
+      }));
+    } catch (e) { /* modo privado, cota cheia: esta empresa não persiste */ }
+    resumos.push(`${nomeEmpresa(parte.meta)} (${parte.solicitacoes.length}${notaMerge})`);
+  }
+
+  $("upload-msg").innerHTML = `<div class="alerta ok">
+    Relatório em Excel com ${partes.length} empresa${partes.length > 1 ? "s" : ""} juntas:
+    cada uma virou (ou atualizou) a sua própria conferência, separada das demais —
+    ${resumos.join("; ")}. Escolha uma abaixo para continuar.</div>`;
+  irPara("upload");
+  renderRetomar();
+}
+
+/**
  * Aceita o relatório em PDF ou em Excel (.xlsx/.xls) — mesmo relatório,
  * dois formatos de exportação do SCK (ver comentário no topo de parser.js
  * para o porquê de preferir o Excel quando ele estiver disponível). Os
  * dois caminhos convergem no mesmo `dados` ({meta, solicitacoes,
- * validacao}) e dali pra baixo o fluxo é idêntico.
+ * validacao}) e dali pra baixo o fluxo é idêntico — exceto quando o Excel
+ * traz várias empresas juntas, que se separa em várias conferências
+ * (processarMultiEmpresa) em vez de virar uma só.
  */
 async function processar(arquivo) {
   const msg = $("upload-msg");
@@ -541,6 +695,12 @@ async function processar(arquivo) {
         O layout do relatório mudou?</div>`;
       return;
     }
+
+    if (dados.meta.multiEmpresa) {
+      processarMultiEmpresa(dados);
+      return;
+    }
+
     msg.innerHTML = "";
 
     const salvo = localStorage.getItem(chaveLote(dados));
@@ -593,17 +753,19 @@ function render() {
         R$ ${moeda(validacao.valorExtraido)} × R$ ${moeda(validacao.valorRelatorio)}).
         Confira o relatório antes de emitir o parecer.</div>`;
 
-  // Só o Excel pode trazer mais de uma empresa junta e só ele pode ter uma
-  // conta de origem que não bateu com contas.js (ver parseRelatorioExcel,
-  // em parser.js) — persistente na tela inteira de conferência, não só no
-  // momento do upload, porque é informação relevante durante toda a revisão.
+  // Só o Excel pode ter uma conta de origem que não bateu com contas.js (ver
+  // parseRelatorioExcel, em parser.js) e só um pedaço dividido de um Excel
+  // multiempresa (ver dividirPorEmpresa) carrega origemMultiEmpresa —
+  // persistente na tela inteira de conferência, não só no momento do
+  // upload, porque é informação relevante durante toda a revisão.
   const meta = estado.dados.meta;
   let avisoExcel = "";
   if (meta?.formato === "excel") {
     const semEmpresa = estado.dados.solicitacoes.filter((x) => !x.empresa).length;
     const partes = [];
-    if (meta.multiEmpresa)
-      partes.push(`${meta.empresas.length} empresas juntas neste relatório: ${meta.empresas.join(", ")}.`);
+    if (meta.origemMultiEmpresa?.empresas?.length)
+      partes.push(`Este relatório veio de um Excel com várias empresas juntas — as demais
+        (${meta.origemMultiEmpresa.empresas.join(", ")}) viraram conferências separadas.`);
     if (semEmpresa)
       partes.push(`${semEmpresa} solicitação(ões) com conta de origem não cadastrada em contas.js
         — empresa não identificada automaticamente (veja o apontamento em cada uma).`);
