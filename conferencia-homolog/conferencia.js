@@ -1895,6 +1895,12 @@ function abaResumoGeral(wb, lotes, linhas, plano = null) {
   // gerarPlanilhaGeral — mas isso não afeta a fórmula, o Excel só resolve
   // a referência quando o arquivo é aberto).
   const escaparFormula = (t) => String(t).replace(/"/g, '""');
+  // Primeira linha de dado na aba "TODAS" — ela sempre existe (ver
+  // gerarPlanilhaGeral/imprimirDia, que escrevem "TODAS" nos dois casos),
+  // então é usada tanto no fallback de empresa sem aba própria abaixo
+  // quanto no quadro "POR STATUS NO PERÍODO", que nunca tem aba por
+  // empresa e por isso sempre busca em "TODAS".
+  const deTodas = (plano ? 2 : 1) + 1;
   let l = 9;
   for (const lote of lotes) {
     const chave = lote.chaveEmpresa ?? lote.empresa;
@@ -1941,16 +1947,15 @@ function abaResumoGeral(wb, lotes, linhas, plano = null) {
       // Planilha consolidada geral (gerarPlanilhaGeral): não tem uma aba por
       // empresa, só "TODAS" com todo mundo junto — busca ali, filtrando
       // pela empresa dessa linha da tabela.
-      const de = (plano ? 2 : 1) + 1;   // primeira linha de dado na aba TODAS
       const crit = `"${escaparFormula(chave)}"`;
-      linha.getCell(3 + o).value = { formula: `COUNTIFS(TODAS!$B$${de}:$B$100000,${crit})` };
-      linha.getCell(4 + o).value = { formula: `SUMIFS(TODAS!$I$${de}:$I$100000,TODAS!$B$${de}:$B$100000,${crit})` };
+      linha.getCell(3 + o).value = { formula: `COUNTIFS(TODAS!$B$${deTodas}:$B$100000,${crit})` };
+      linha.getCell(4 + o).value = { formula: `SUMIFS(TODAS!$I$${deTodas}:$I$100000,TODAS!$B$${deTodas}:$B$100000,${crit})` };
       linha.getCell(5 + o).value = { formula:
-        `COUNTIFS(TODAS!$B$${de}:$B$100000,${crit},TODAS!$J$${de}:$J$100000,"<>Sem conferir")` };
+        `COUNTIFS(TODAS!$B$${deTodas}:$B$100000,${crit},TODAS!$J$${deTodas}:$J$100000,"<>Sem conferir")` };
       linha.getCell(6 + o).value = { formula:
-        `COUNTIFS(TODAS!$B$${de}:$B$100000,${crit},TODAS!$J$${de}:$J$100000,"Sem conferir")` };
+        `COUNTIFS(TODAS!$B$${deTodas}:$B$100000,${crit},TODAS!$J$${deTodas}:$J$100000,"Sem conferir")` };
       linha.getCell(7 + o).value = { formula:
-        `COUNTIFS(TODAS!$B$${de}:$B$100000,${crit},TODAS!$L$${de}:$L$100000,"<>")` };
+        `COUNTIFS(TODAS!$B$${deTodas}:$B$100000,${crit},TODAS!$L$${deTodas}:$L$100000,"<>")` };
     }
     l++;
   }
@@ -1968,16 +1973,27 @@ function abaResumoGeral(wb, lotes, linhas, plano = null) {
     ? ["Status", "", "", "Qtde", "Valor (R$)", "% do valor"]
     : ["Status", "", "Qtde", "Valor (R$)", "% do valor"]);
   l = inicioStatus + 1;
-  const base = valorTotal || 1;
+  // Mesmo pedido do Rocha em 23/09/2026 aplicado aqui: Qtde/Valor por
+  // fórmula em vez de número já calculado. Diferente do quadro "POR DIA E
+  // EMPRESA", este quadro não é por empresa — é o total do período inteiro
+  // por status — então não tem aba própria pra buscar: sempre lê a aba
+  // "TODAS", que gerarPlanilhaGeral() e imprimirDia() sempre escrevem (com
+  // ou sem abas por empresa). "% do valor" divide pelo próprio TOTAL de
+  // Valor (R$) do quadro acima (célula com fórmula também, ver "total"
+  // logo abaixo) em vez de reusar valorTotal calculado em JS — assim toda
+  // a cadeia, do valor de cada empresa até o percentual aqui embaixo,
+  // deriva de fórmula, e o Excel mesmo garante que os dois batem.
+  const refTotalValor = `$${letraColuna(4 + o)}$${fimLotes}`;
   for (const nome of [...STATUS.map((x) => x.valor), "Sem conferir"]) {
     const doStatus = linhas.filter((x) => x.status === nome);
     if (!doStatus.length) continue;
-    const soma = doStatus.reduce((a, x) => a + (x.valor || 0), 0);
     const linha = ws.getRow(l);
     linha.getCell(1).value = nome;
-    linha.getCell(3 + o).value = doStatus.length;
-    linha.getCell(4 + o).value = soma;
-    linha.getCell(5 + o).value = soma / base;
+    const critStatus = `"${escaparFormula(nome)}"`;
+    linha.getCell(3 + o).value = { formula: `COUNTIF(TODAS!$J$${deTodas}:$J$100000,${critStatus})` };
+    linha.getCell(4 + o).value = { formula:
+      `SUMIF(TODAS!$J$${deTodas}:$J$100000,${critStatus},TODAS!$I$${deTodas}:$I$100000)` };
+    linha.getCell(5 + o).value = { formula: `IFERROR(${letraColuna(4 + o)}${l}/${refTotalValor},0)` };
     if (COR_STATUS[nome]) {
       linha.getCell(1).font = { name: "Calibri", size: 11, bold: true, color: { argb: COR_STATUS[nome] } };
     }
@@ -1998,12 +2014,19 @@ function abaResumoGeral(wb, lotes, linhas, plano = null) {
       if (o) for (const i of [2, 3]) linha.getCell(i).border = hair;   // linha contínua sob "Status"
     }
   }
+  // A linha TOTAL leva borda de cima azul (separando das empresas) — mas o
+  // loop acima já tinha desenhado a borda de baixo cinza (fechando a
+  // tabela). c.border = {...} SUBSTITUI o objeto inteiro, então sem
+  // reaplicar o bottom aqui a borda de baixo do TOTAL desaparecia e a
+  // tabela ficava "aberta" na última linha — achado pelo Rocha em
+  // 23/09/2026, junto com o pedido de fórmula no quadro de status.
+  const bordaTotal = { top: { style: "thin", color: { argb: AZUL } }, bottom: { style: "hair", color: { argb: CINZA_LINHA } } };
   const lt = ws.getRow(fimLotes);
   lt.eachCell((c) => {
     c.font = { name: "Calibri", size: 11, bold: true };
-    c.border = { top: { style: "thin", color: { argb: AZUL } } };
+    c.border = bordaTotal;
   });
-  if (o) lt.getCell(2).border = { top: { style: "thin", color: { argb: AZUL } } };
+  if (o) lt.getCell(2).border = bordaTotal;
   lt.getCell(4 + o).numFmt = "#,##0.00";
 
   if (plano) {
