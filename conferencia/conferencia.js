@@ -631,6 +631,18 @@ function dividirPorEmpresa(dados) {
 function processarMultiEmpresa(dados) {
   const partes = dividirPorEmpresa(dados);
   const resumos = [];
+  // Pedido do Rocha em 24/09/2026: quando o relatório novo sai com menos
+  // solicitações do que o lote salvo (uma foi cancelada/removida no SCK
+  // entre um upload e outro), ela já saía de estado.itens/estado.pareceres
+  // sozinha — mesclar() sempre tratou o relatório novo como "a verdade" (ver
+  // comentário de mesclar() acima) — mas isso NUNCA aparecia pro conferente
+  // neste caminho (Excel com várias empresas): só novas/alteradas eram
+  // citadas por empresa, sumida nenhuma. No caminho de empresa única (PDF ou
+  // Excel de uma empresa só) esse aviso já existe (ver "aviso-mesclagem" em
+  // render()); aqui replica a mesma contagem, por auditoria — um parecer já
+  // dado que some sem aviso é exatamente o tipo de coisa que não pode passar
+  // batido.
+  let totalSumiram = 0;
   for (const parte of partes) {
     // mesmo cálculo que um upload de empresa única já fazia antes de salvar
     // (recalcularPoderes) — sem isso, o apontamento de poder só apareceria
@@ -643,8 +655,11 @@ function processarMultiEmpresa(dados) {
     if (salvoAnterior) {
       const r = mesclar(JSON.parse(salvoAnterior), parte);
       pareceres = r.pareceres;
+      totalSumiram += r.sumiram.length;
       const partes2 = [r.novas.length && `${r.novas.length} nova(s)`,
-                        r.alteradas.length && `${r.alteradas.length} alterada(s)`].filter(Boolean);
+                        r.alteradas.length && `${r.alteradas.length} alterada(s)`,
+                        r.sumiram.length && `${r.sumiram.length} já conferida(s) saiu/saíram do relatório (${r.sumiram.join(", ")})`,
+                       ].filter(Boolean);
       if (partes2.length) notaMerge = ` — ${partes2.join(", ")}`;
     }
     try {
@@ -662,11 +677,17 @@ function processarMultiEmpresa(dados) {
   // ✕, como o aviso de mesclagem acima) e o detalhe por empresa — que ainda
   // é informação de auditoria útil (quantas solicitações entraram em cada
   // uma, e quantas foram mescladas) — fica atrás de "Ver detalhes",
-  // recolhido por padrão em vez de sumir de vez.
+  // recolhido por padrão em vez de sumir de vez. O aviso de sumidas (linha
+  // abaixo) segue essa mesma regra: uma frase curta no corpo principal —
+  // pra não passar despercebido — com a lista de S.N. específica de cada
+  // empresa só dentro de "Ver detalhes", igual ao resto do detalhe.
+  const avisoSumiram = totalSumiram
+    ? ` ${totalSumiram} solicitação(ões) que você já tinha conferido saiu/saíram do relatório — ver detalhes.`
+    : "";
   $("upload-msg").innerHTML = `<div class="alerta ok alerta--removivel">
     <b>Relatório importado com sucesso.</b> ${partes.length}
     empresa${partes.length > 1 ? "s" : ""} atualizada${partes.length > 1 ? "s" : ""},
-    cada uma na sua própria conferência. Escolha uma abaixo para continuar.
+    cada uma na sua própria conferência. Escolha uma abaixo para continuar.${avisoSumiram}
     <details class="upload-msg__detalhe"><summary>Ver detalhes</summary>${resumos.join("; ")}</details>
     <button class="alerta__x" id="btn-fecha-upload-msg" title="Dispensar">✕</button>
   </div>`;
