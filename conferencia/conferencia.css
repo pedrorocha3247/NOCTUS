@@ -234,6 +234,18 @@ kbd{background:var(--color-surface-raised);border:1px solid var(--color-border);
   background:var(--color-error-bg)}
 .botao.perigo{background:var(--color-error);color:#fff}
 .botao.perigo:hover:not(:disabled){background:#ef6259}
+/* linha que junta os chips de forma de pagamento (esquerda) com a busca por
+   texto (direita, "canto direito" pedido pelo Rocha) — cada um cuida do seu
+   espaço e quebra pra linha de baixo em telas estreitas, sem disputar lugar */
+.linha-filtros-busca{display:flex;align-items:flex-start;justify-content:space-between;
+  gap:.6rem 1rem;flex-wrap:wrap;margin-bottom:1rem}
+.linha-filtros-busca .lista-tipos{flex:1 1 auto;margin-bottom:0}
+.busca-obs{flex:0 0 auto;margin-left:auto}
+.busca-obs__input{width:15rem;max-width:100%;padding:.35rem .7rem;
+  background:var(--color-surface-raised);border:1px solid var(--color-border);
+  border-radius:999px;color:var(--color-text);font:inherit;font-size:.82rem}
+.busca-obs__input:focus{outline:none;border-color:var(--color-blue)}
+.busca-obs__input::placeholder{color:var(--color-text-muted)}
 .lista-tipos{display:flex;gap:.4rem;flex-wrap:wrap;margin-bottom:1rem}
 .chip{background:var(--color-surface-raised);border:1px solid var(--color-border);
   border-radius:999px;padding:.35rem .8rem;font-size:.78rem;color:var(--color-text-secondary);cursor:pointer}
@@ -306,7 +318,7 @@ kbd{background:var(--color-surface-raised);border:1px solid var(--color-border);
   main{max-width:none;margin:0;padding:0}
 
   /* controles não têm sentido no papel */
-  .acoes,.botao,.lista-tipos,.lista-status,#res-pendencia{display:none!important}
+  .acoes,.botao,.lista-tipos,.lista-status,.busca-obs,#res-pendencia{display:none!important}
 
   /* o cabeçalho vira o título do documento impresso */
   .topo{background:#fff;border-bottom:1px solid #999;padding:0 0 3mm;margin-bottom:5mm}
