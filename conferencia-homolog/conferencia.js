@@ -942,6 +942,7 @@ const CLASSE_STATUS = { Aprovado: "g", "Aguardando esclarecimentos": "b",
 
 let filtro = null;         // forma de pagamento (ou apontadas)
 let filtroStatus = null;   // status do parecer, combinado com o filtro acima
+let busca = "";            // texto livre buscado na observação/destinação
 let ultimoAberto = null;   // cartão de onde o conferidor foi aberto
 
 function mostrarResumo() {
@@ -1008,10 +1009,33 @@ function mostrarResumo() {
   });
 
   const esc = (t) => String(t ?? "").replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
-  const visiveis = naAba.filter((s) => !filtroStatus || statusDoItem(s) === filtroStatus);
+  // Busca por texto (canto direito da barra de filtros — pedido do Rocha em
+  // 24/09/2026: "supondo coloco 'Almoço' irá trazer todas as solicitações
+  // que na observação contenha almoço"). O relatório não tem um campo único
+  // e sempre presente chamado "observação": a coluna "OBSERVAÇÃO" só existe
+  // de fato nas famílias DÉBITO EM CONTA/BOLETO (vira s.complemento — ver
+  // montarComplementoExcel/COLUNAS em parser.js); em TED/TRANSFERÊNCIA/PIX
+  // esse mesmo s.complemento guarda dado bancário ou chave PIX, não uma
+  // observação. Por isso a busca cobre DOIS campos de texto livre de cada
+  // solicitação — s.destinacao (a "Destinação", sempre presente e é o texto
+  // mostrado em todo cartão da lista) e s.complemento (a "Observação" de
+  // fato, quando a solicitação for débito/boleto) — maximizando o que o
+  // termo pode encontrar sem tocar em campos que não são texto descritivo
+  // (favorecido, CPF/CNPJ, status etc.). Ponto que pode precisar de
+  // validação com o Rocha: se algum dia ele quiser a busca restrita só à
+  // coluna "Observação" literal (não à Destinação), o campo de busca abaixo
+  // deve trocar de `textoBusca` para olhar só `s.complemento`.
+  const termoBusca = busca.trim().toLowerCase();
+  const textoBusca = (s) => `${s.destinacao || ""} ${s.complemento || ""}`.toLowerCase();
+  const visiveis = naAba
+    .filter((s) => !filtroStatus || statusDoItem(s) === filtroStatus)
+    .filter((s) => !termoBusca || textoBusca(s).includes(termoBusca));
   $("res-qtd").textContent = `· ${visiveis.length}` +
     (filtro === APONTADAS ? " com apontamento" : filtro ? " em " + filtro : "") +
-    (filtroStatus ? ` · ${filtroStatus.toLowerCase()}` : "");
+    (filtroStatus ? ` · ${filtroStatus.toLowerCase()}` : "") +
+    // .textContent (não innerHTML) já escapa sozinho — nada de esc() aqui,
+    // senão um termo com "&" apareceria como "&amp;" literal na tela.
+    (termoBusca ? ` · observação contém "${busca.trim()}"` : "");
   $("res-corpo").innerHTML = visiveis
     .map((s) => {
       const p = estado.pareceres[s.sn] || {};
@@ -1066,6 +1090,12 @@ function ligarResumo() {
   $("btn-voltar").onclick = () => { irPara("revisao"); render(); };
   $("btn-imprimir").onclick = () => window.print();
   $("btn-planilha").onclick = gerarPlanilha;
+  // Elemento fixo em HTML (nunca recriado pelo innerHTML de mostrarResumo),
+  // de propósito: se ele fosse gerado dentro de #res-filtros/innerHTML, cada
+  // tecla digitada destruiria e recriaria o <input>, perdendo o foco e o
+  // cursor no meio da digitação. Por ficar fora desses containers, o valor e
+  // o foco sobrevivem normalmente a cada re-render disparado pelo oninput.
+  $("res-busca").oninput = (e) => { busca = e.target.value; mostrarResumo(); };
   $("btn-lista").onclick = () => {
     const lista = $("res-lista");
     lista.hidden = !lista.hidden;
