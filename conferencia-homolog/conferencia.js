@@ -52,7 +52,7 @@ const otnAtual = () => {
   return isFinite(v) && v > 0 ? v : OTN_PADRAO;
 };
 
-let estado = { dados: null, itens: [], pareceres: {}, i: 0, mesclagem: null };
+let estado = { dados: null, itens: [], pareceres: {}, removidas: [], i: 0, mesclagem: null };
 
 /* ---------------------------------------------------------------- persistência */
 /**
@@ -114,17 +114,55 @@ const assinatura = (s) => [s.tipo, s.valor, s.favorecido, s.cpfCnpj, s.destinaca
 
 /**
  * Junta o relatório recém-aberto com a conferência já gravada para aquela data.
- * O relatório novo é a verdade: ele manda na lista. Os pareceres já dados são
- * preservados, menos os de solicitações que mudaram — esses voltam a pendente,
- * porque conferir R$ 10.000 não vale como parecer para R$ 15.000.
+ * O relatório novo é a verdade PARA A LISTA ATIVA: ele manda em estado.itens e
+ * na validação de totais, que só pode bater com o que está impresso hoje. Os
+ * pareceres já dados são preservados, menos os de solicitações que mudaram —
+ * esses voltam a pendente, porque conferir R$ 10.000 não vale como parecer
+ * para R$ 15.000.
+ *
+ * Pedido do Rocha em 25/09/2026: uma solicitação que JÁ tinha parecer (ex.:
+ * Recusado, com o motivo escrito) e que some de um relatório mais novo não
+ * pode perder essa informação — ele precisa continuar sabendo o motivo mesmo
+ * depois que ela sumiu do SCK (retirada, cancelada etc.). Até aqui ela
+ * simplesmente saía de solicitacoes/pareceres e o motivo ficava só na memória
+ * de quem conferiu. Agora, junto com `sumiram` (a lista de S.N., que já
+ * existia só pra aviso/contagem), esta função também devolve `removidas`:
+ * uma cópia de cada solicitação sumida — todos os campos originais (S.N.,
+ * valor, favorecido, tipo etc.) MAIS o status e o texto do parecer que ela
+ * tinha — guardada À PARTE de estado.itens/pareceres (fora da validação de
+ * totais do relatório atual) e acumulada a cada novo relatório, até que a
+ * solicitação volte a aparecer (ver `reapareceram`, que restaura o parecer
+ * salvo) ou alguém a remova manualmente da lista de removidas.
+ *
+ * Uma solicitação que NUNCA teve parecer e simplesmente some não vira
+ * "removida" — não há motivo nenhum a preservar ali, e listá-la seria ruído
+ * (ela nem é uma decisão do conferente, só uma linha que nunca chegou a ser
+ * olhada).
  */
 function mesclar(anterior, novo) {
   const antes = new Map((anterior.solicitacoes || []).map((s) => [s.sn, s]));
   const pareceresAntigos = anterior.pareceres || {};
+  // solicitações que já tinham sumido numa mesclagem anterior deste mesmo
+  // lote (dia+empresa) e ficaram guardadas em "removidas" — indexadas por
+  // S.N. pra checar se alguma delas voltou a constar no relatório de agora.
+  const removidasAntigas = new Map((anterior.removidas || []).map((r) => [r.sn, r]));
   const pareceres = {};
-  const novas = [], alteradas = [];
+  const novas = [], alteradas = [], reapareceram = [];
 
   for (const s of novo.solicitacoes) {
+    const removidaAntes = removidasAntigas.get(s.sn);
+    if (removidaAntes) {
+      // reapareceu: estava sumida (já com parecer dado) e voltou a constar
+      // no relatório — restaura o parecer que tinha, com a mesma regra de
+      // "alterada" se os dados-chave mudaram desde que ela sumiu.
+      removidasAntigas.delete(s.sn);
+      reapareceram.push(s.sn);
+      pareceres[s.sn] = (removidaAntes.status && assinatura(removidaAntes) !== assinatura(s))
+        ? { status: "", parecer: removidaAntes.parecer }
+        : { status: removidaAntes.status, parecer: removidaAntes.parecer };
+      if (!pareceres[s.sn].status) alteradas.push(s.sn);
+      continue;
+    }
     const anteriorS = antes.get(s.sn);
     if (!anteriorS) { novas.push(s.sn); continue; }
     const p = pareceresAntigos[s.sn];
@@ -139,18 +177,26 @@ function mesclar(anterior, novo) {
   }
 
   const agora = new Set(novo.solicitacoes.map((s) => s.sn));
-  const sumiram = (anterior.solicitacoes || [])
-    .filter((s) => !agora.has(s.sn) && pareceresAntigos[s.sn]?.status)
-    .map((s) => s.sn);
+  const sumidasAgora = (anterior.solicitacoes || [])
+    .filter((s) => !agora.has(s.sn) && pareceresAntigos[s.sn]?.status);
+  const removidasNovas = sumidasAgora.map((s) => ({
+    ...s,
+    status: pareceresAntigos[s.sn].status,
+    parecer: pareceresAntigos[s.sn].parecer,
+    removidoEm: novo.meta?.dataInicio || anterior.meta?.dataInicio || "",
+  }));
+  const removidas = [...removidasAntigas.values(), ...removidasNovas];
+  const sumiram = sumidasAgora.map((s) => s.sn);
 
-  return { pareceres, novas, alteradas, sumiram };
+  return { pareceres, novas, alteradas, sumiram, removidas, reapareceram };
 }
 
 function salvar() {
   try {
     localStorage.setItem(chaveLote(estado.dados), JSON.stringify({
       meta: estado.dados.meta, validacao: estado.dados.validacao,
-      solicitacoes: estado.dados.solicitacoes, pareceres: estado.pareceres, i: estado.i,
+      solicitacoes: estado.dados.solicitacoes, pareceres: estado.pareceres,
+      removidas: estado.removidas || [], i: estado.i,
     }));
   } catch (e) { /* modo privado, cota cheia: a conferência continua, só não persiste */ }
 }
@@ -268,6 +314,7 @@ function carregar(chave, destino) {
   const v = JSON.parse(localStorage.getItem(chave));
   estado.dados = { meta: v.meta, validacao: v.validacao, solicitacoes: v.solicitacoes };
   estado.pareceres = v.pareceres || {};
+  estado.removidas = v.removidas || [];
   estado.itens = ordenar(v.solicitacoes, estado.pareceres);
   estado.i = Math.min(v.i || 0, estado.itens.length - 1);
   recalcularPoderes();   // o OTN pode ter mudado desde que este lote foi salvo
@@ -629,15 +676,18 @@ function processarMultiEmpresa(dados) {
   const resumos = [];
   // Pedido do Rocha em 24/09/2026: quando o relatório novo sai com menos
   // solicitações do que o lote salvo (uma foi cancelada/removida no SCK
-  // entre um upload e outro), ela já saía de estado.itens/estado.pareceres
-  // sozinha — mesclar() sempre tratou o relatório novo como "a verdade" (ver
-  // comentário de mesclar() acima) — mas isso NUNCA aparecia pro conferente
-  // neste caminho (Excel com várias empresas): só novas/alteradas eram
-  // citadas por empresa, sumida nenhuma. No caminho de empresa única (PDF ou
-  // Excel de uma empresa só) esse aviso já existe (ver "aviso-mesclagem" em
-  // render()); aqui replica a mesma contagem, por auditoria — um parecer já
-  // dado que some sem aviso é exatamente o tipo de coisa que não pode passar
-  // batido.
+  // entre um upload e outro), isso NUNCA aparecia pro conferente neste
+  // caminho (Excel com várias empresas): só novas/alteradas eram citadas por
+  // empresa, sumida nenhuma. No caminho de empresa única (PDF ou Excel de
+  // uma empresa só) esse aviso já existe (ver "aviso-mesclagem" em render());
+  // aqui replica a mesma contagem, por auditoria — um parecer já dado que
+  // some sem aviso é exatamente o tipo de coisa que não pode passar batido.
+  //
+  // Pedido do Rocha em 25/09/2026: além de avisar, a solicitação sumida que
+  // JÁ tinha parecer não pode mais perder o motivo — mesclar() agora devolve
+  // `removidas` (ver comentário da função), que cada empresa grava junto do
+  // lote e a tela de Resumo lista à parte, fora dos totais/validação do
+  // relatório atual.
   let totalSumiram = 0;
   for (const parte of partes) {
     // mesmo cálculo que um upload de empresa única já fazia antes de salvar
@@ -647,10 +697,11 @@ function processarMultiEmpresa(dados) {
     calcularPoderes(parte.meta, parte.solicitacoes);
     const chave = chaveLote(parte);
     const salvoAnterior = localStorage.getItem(chave);
-    let pareceres = {}, notaMerge = "";
+    let pareceres = {}, removidas = [], notaMerge = "";
     if (salvoAnterior) {
       const r = mesclar(JSON.parse(salvoAnterior), parte);
       pareceres = r.pareceres;
+      removidas = r.removidas;
       totalSumiram += r.sumiram.length;
       const partes2 = [r.novas.length && `${r.novas.length} nova(s)`,
                         r.alteradas.length && `${r.alteradas.length} alterada(s)`,
@@ -661,7 +712,7 @@ function processarMultiEmpresa(dados) {
     try {
       localStorage.setItem(chave, JSON.stringify({
         meta: parte.meta, validacao: parte.validacao,
-        solicitacoes: parte.solicitacoes, pareceres, i: 0,
+        solicitacoes: parte.solicitacoes, pareceres, removidas, i: 0,
       }));
     } catch (e) { /* modo privado, cota cheia: esta empresa não persiste */ }
     resumos.push(`${nomeEmpresa(parte.meta)} (${parte.solicitacoes.length}${notaMerge})`);
@@ -678,7 +729,8 @@ function processarMultiEmpresa(dados) {
   // pra não passar despercebido — com a lista de S.N. específica de cada
   // empresa só dentro de "Ver detalhes", igual ao resto do detalhe.
   const avisoSumiram = totalSumiram
-    ? ` ${totalSumiram} solicitação(ões) que você já tinha conferido saiu/saíram do relatório — ver detalhes.`
+    ? ` ${totalSumiram} solicitação(ões) que você já tinha conferido saiu/saíram do relatório — motivo e
+       status ficam guardados em "Removidas do relatório", no Resumo de cada empresa. Ver detalhes.`
     : "";
   $("upload-msg").innerHTML = `<div class="alerta ok alerta--removivel">
     <b>Relatório importado com sucesso.</b> ${partes.length}
@@ -741,9 +793,11 @@ async function processar(arquivo) {
     if (salvo) {
       const r = mesclar(JSON.parse(salvo), dados);
       estado.pareceres = r.pareceres;
+      estado.removidas = r.removidas;
       estado.mesclagem = r;
     } else {
       estado.pareceres = {};
+      estado.removidas = [];
       estado.mesclagem = null;
     }
     // com os pareceres já mesclados: os ainda pendentes ficam depois dos já
@@ -761,7 +815,8 @@ async function processar(arquivo) {
 function render() {
   const { validacao } = estado.dados;
   const m = estado.mesclagem;
-  $("aviso-mesclagem").innerHTML = !m || (!m.novas.length && !m.alteradas.length && !m.sumiram.length)
+  $("aviso-mesclagem").innerHTML =
+    !m || (!m.novas.length && !m.alteradas.length && !m.sumiram.length && !m.reapareceram.length)
     ? ""
     : `<div class="alerta ok">
         <b>Relatório atualizado.</b> Seus pareceres foram mantidos.
@@ -769,7 +824,10 @@ function render() {
         ${m.alteradas.length ? `${m.alteradas.length} mudou/mudaram desde a última conferência
            e voltaram a pendente — o texto do parecer ficou guardado.` : ""}
         ${m.sumiram.length ? `${m.sumiram.length} que você já tinha conferido saiu/saíram do
-           relatório: ${m.sumiram.join(", ")}.` : ""}
+           relatório: ${m.sumiram.join(", ")} — motivo e status ficam guardados em
+           "Removidas do relatório", no Resumo.` : ""}
+        ${m.reapareceram.length ? `${m.reapareceram.length} que tinha(m) sumido voltou/voltaram a
+           aparecer: ${m.reapareceram.join(", ")} — o parecer anterior foi restaurado.` : ""}
         <button class="alerta__x" id="btn-fecha-mesclagem" title="Dispensar">✕</button>
       </div>`;
   if (m) {
@@ -1064,6 +1122,30 @@ function mostrarResumo() {
     const alvo = $("res-corpo").querySelector(`[data-sn="${CSS.escape(ultimoAberto)}"]`);
     if (alvo && !$("res-lista").hidden) alvo.scrollIntoView({ block: "center" });
   }
+
+  // Pedido do Rocha em 25/09/2026: solicitações que sumiram de um relatório
+  // mais novo mas já tinham parecer (ver mesclar()/estado.removidas) ficam
+  // listadas aqui, num cartão à parte — de propósito FORA de res-totais/
+  // res-status/validacao acima, que continuam refletindo só o relatório
+  // atual. Cartão inteiro escondido quando não há nenhuma (a maioria dos
+  // dias), pra não virar ruído permanente na tela.
+  const removidas = estado.removidas || [];
+  $("card-removidas").hidden = !removidas.length;
+  $("res-removidas-qtd").textContent = removidas.length ? `· ${removidas.length}` : "";
+  $("res-removidas-corpo").innerHTML = [...removidas]
+    .sort((a, b) => (b.valor || 0) - (a.valor || 0))
+    .map((r) => `<div class="parecer parecer--removida">
+        <div class="parecer__topo">
+          <span class="parecer__sn">${esc(r.sn)}</span>
+          <span class="parecer__valor">R$ ${moeda(r.valor)}</span>
+          <span class="marca marca--${idDoStatus(r.status)}">${esc(r.status)}</span>
+        </div>
+        <div class="parecer__fav">${esc(r.favorecido)}</div>
+        <div class="parecer__dest">${esc(r.destinacao)}</div>
+        ${r.parecer ? `<div class="parecer__texto">${esc(r.parecer)}</div>` : ""}
+        <div class="parecer__removida-nota">Não consta mais no relatório importado em
+          ${esc(r.removidoEm || "data não registrada")}.</div>
+      </div>`).join("");
 }
 
 /** Abre no conferidor a solicitação do cartão clicado. */
@@ -1103,6 +1185,12 @@ function ligarResumo() {
     lista.hidden = !lista.hidden;
     $("btn-lista").textContent = lista.hidden ? "Mostrar" : "Ocultar";
     $("btn-lista").setAttribute("aria-expanded", String(!lista.hidden));
+  };
+  $("btn-removidas").onclick = () => {
+    const lista = $("res-removidas-lista");
+    lista.hidden = !lista.hidden;
+    $("btn-removidas").textContent = lista.hidden ? "Mostrar" : "Ocultar";
+    $("btn-removidas").setAttribute("aria-expanded", String(!lista.hidden));
   };
 }
 
