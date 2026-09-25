@@ -132,7 +132,9 @@ const assinatura = (s) => [s.tipo, s.valor, s.favorecido, s.cpfCnpj, s.destinaca
  * tinha — guardada À PARTE de estado.itens/pareceres (fora da validação de
  * totais do relatório atual) e acumulada a cada novo relatório, até que a
  * solicitação volte a aparecer (ver `reapareceram`, que restaura o parecer
- * salvo) ou alguém a remova manualmente da lista de removidas.
+ * salvo). NÃO existe hoje uma ação na tela para excluir manualmente um item
+ * de "removidas" — fica lá indefinidamente até reaparecer; se algum dia
+ * acumular demais, isso pode virar um pedido de melhoria separado.
  *
  * Uma solicitação que NUNCA teve parecer e simplesmente some não vira
  * "removida" — não há motivo nenhum a preservar ali, e listá-la seria ruído
