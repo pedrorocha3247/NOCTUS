@@ -141,6 +141,22 @@
         <div id="res-corpo"></div>
       </div>
     </div>
+
+    <div class="cartao" id="card-removidas" hidden>
+      <div class="cabecalho-recolhivel">
+        <h2>Removidas do relatório <span class="sub" id="res-removidas-qtd"></span></h2>
+        <button class="botao fantasma" id="btn-removidas" aria-expanded="false"
+                aria-controls="res-removidas-lista">Mostrar</button>
+      </div>
+      <p class="sub" style="margin-top:-.6rem;margin-bottom:1.2rem">
+        Já tiveram parecer, mas não constam mais no relatório mais recente importado para
+        este dia/empresa. Motivo e status ficam guardados aqui — não entram nos totais
+        acima nem na validação do relatório atual.
+      </p>
+      <div id="res-removidas-lista" hidden>
+        <div id="res-removidas-corpo"></div>
+      </div>
+    </div>
   </section>
 
   <!-- 4. configurações -->
