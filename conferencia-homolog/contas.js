@@ -96,8 +96,24 @@ export const CONTAS_EMPRESA = [
   { empresa: "Posto", aba: "Posto", codigo: "91", banco: "Banco do Brasil - 01", agencia: "6752", conta: "12174-6", cnpj: "27.510.105/0001-47" },
 ];
 
-/** Tira espaço (inclusive não separável), ponto de milhar e caixa — "62.222-8" e "62222 - 8" viram "62222-8". */
-const normalizarConta = (s) => String(s || "").replace(/ /g, " ").replace(/[\s.]/g, "").toUpperCase();
+/**
+ * Tira espaço (inclusive não separável), ponto de milhar, hífen do dígito
+ * verificador e caixa — "62.222-8", "62222 - 8" e "622228" viram todos
+ * "622228".
+ *
+ * O hífen entrou na normalização em 28/09/2026: a conta Bradesco Ag. 0134 -
+ * C/C 3568814 da Momentum já estava cadastrada (linha "conta: 356881-4"
+ * acima, com o hífen do dígito verificador), mas o relatório do SCK para
+ * essa conta imprime o número TODO junto, sem hífen ("C/C 3568814") —
+ * então empresaPorConta("3568814") nunca batia com "356881-4" e a
+ * solicitação saía com "conta de origem não cadastrada", mesmo a conta já
+ * estando na tabela. Conferido em 28/09/2026 que tirar o hífen aqui não
+ * cria colisão entre nenhuma das contas já cadastradas — mas fica o
+ * registro: se um dia isso mudar, duas contas diferentes que só se
+ * distinguem pelo hífen do dígito verificador passariam a colidir
+ * silenciosamente aqui.
+ */
+const normalizarConta = (s) => String(s || "").replace(/ /g, " ").replace(/[\s.\-]/g, "").toUpperCase();
 
 /**
  * Acha a empresa dona de uma conta, pelo número da conta (agência é
