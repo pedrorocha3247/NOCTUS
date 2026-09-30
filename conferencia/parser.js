@@ -43,6 +43,20 @@
  * disponíveis (valores numéricos nativos, colunas por nome em vez de
  * posição em pixel) e como a EMPRESA de cada solicitação é identificada
  * (o Excel sai com todas as empresas juntas, ao contrário do PDF).
+ *
+ * BANCO/AGÊNCIA/CONTA BANCÁRIA DO FAVORECIDO (campos `banco`, `agencia`,
+ * `contaBancaria`, família A — TED/PIX/TRANSFERÊNCIA): até 29/09/2026 essas
+ * três colunas eram lidas juntas, como uma única string `complemento`
+ * ("1 - 4092-4 - 11955-5"), nunca exibida em lugar nenhum da tela. Separadas
+ * em 30/09/2026 pro painel "Dados Bancários" do conferidor (index.html/
+ * conferencia.js), que fica escondido por padrão abaixo do campo Favorecido.
+ * NÃO CONFUNDIR com contas.js/empresaPorConta(): aqui é o banco/agência/conta
+ * de DESTINO do pagamento (do favorecido); lá é a conta de ORIGEM do débito
+ * (de qual empresa do grupo), usada só pra identificar a empresa — são dois
+ * dados completamente diferentes que só coincidem em formato (Ag./C-C).
+ * A família B (DÉBITO EM CONTA/BOLETO) continua com um "complemento" só
+ * (observação de texto livre) — não tem banco/agência/conta de destino
+ * porque o débito sai direto da mesma conta de origem.
  */
 
 import { empresaPorConta, rotuloEmpresa } from "./contas.js";
@@ -51,10 +65,30 @@ import { verificarGrupoEconomico } from "./grupoEconomico.js";
 // Duas famílias de layout convivem no relatório ANTIGO.
 // A: TRANSFERÊNCIA / TED / PIX      (cabeçalho "S.N" em x >= 31)
 // B: DÉBITO EM CONTA / BOLETO       (cabeçalho "S.N" em x <  31)
+// A coluna única "complemento" (615-760) da família A virou três colunas —
+// banco/agencia/contaBancaria — em 30/09/2026, pra alimentar o painel "Dados
+// Bancários" do conferidor (pedido do Rocha: mostrar o banco/agência/conta do
+// FAVORECIDO de cada solicitação, escondido por padrão, sob um "ver mais" logo
+// abaixo do campo Favorecido — não confundir com CONTAS_EMPRESA/contas.js, que
+// identifica a empresa pela conta de ORIGEM do débito, um problema totalmente
+// diferente). Os três cortes abaixo (648 e 692) NÃO foram chutados: vieram de
+// medir a posição x real de cada palavra do cabeçalho ("BANCO"/"AGÊNCIA"/
+// "CONTA"/"BANCÁRIA") e do DADO de cada coluna (início e fim de cada token) em
+// 4 relatórios reais e independentes do formato antigo (GetRelatorio_11,
+// GetRelatorio_8 — 6 linhas —, GetRelatorio_54, m15.pdf), banco de 1 a 3
+// dígitos, agência com e sem dígito verificador, conta de 5 a 7 dígitos — em
+// todos os casos o banco nunca passou de x≈638, a agência sempre ficou entre
+// x≈654 e x≈729 (terminando no máximo em 720,2), e a conta bancária começou
+// sempre entre x≈698 e x≈732, terminando no máximo em 732,0 — bem antes do
+// "Poder do Dispêndio", que nunca nasceu antes de x≈776,6. Os cortes 648 e 692
+// caem bem no meio de cada vão real (não no meio do vão entre RÓTULOS do
+// cabeçalho, que é mais apertado) — ver a mesma lógica, com números, em
+// detectarColunas() (RATIO_CONTA_BANCARIA) para o formato novo.
 const COLUNAS = {
   A: [["sn",0,52],["filial",45,88],["valor",88,133],["solicitante",133,186],
       ["competente",186,240],["poder",240,270],["cpfCnpj",270,336],
-      ["favorecido",336,458],["destinacao",458,615],["complemento",615,760],
+      ["favorecido",336,458],["destinacao",458,615],
+      ["banco",615,648],["agencia",648,692],["contaBancaria",692,760],
       ["poderDispendio",760,9999]],
   // O corte entre FILIAL e VALOR na família B ficava em x=85, colado no início
   // real do valor (x≈84,2) quando o valor tem 7 dígitos inteiros (>= R$
@@ -113,8 +147,12 @@ const formatoNovo = (textoCompleto) => /Total\s+por\s+/.test(textoCompleto);
 // Campos de solicitação, na ordem em que aparecem no relatório (as duas
 // famílias de layout diferem só no campo final: BANCO/AGÊNCIA/CONTA
 // BANCÁRIA em TED/PIX/TRANSFERÊNCIA, OBSERVAÇÃO em DÉBITO EM CONTA/BOLETO)
-// — usado só pelo caminho do formato NOVO (detectarColunas).
-const ORDEM_CAMPOS = ["sn","filial","valor","solicitante","competente","poder","cpfCnpj","favorecido","destinacao","complemento","poderDispendio"];
+// — usado só pelo caminho do formato NOVO (detectarColunas). "complemento"
+// (família B) e "banco"/"agencia"/"contaBancaria" (família A) nunca aparecem
+// juntos no mesmo cabeçalho — a ordem relativa entre os dois grupos aqui não
+// importa, só a ordem DENTRO de cada grupo (que segue a posição real no
+// relatório: banco, depois agência, depois conta bancária).
+const ORDEM_CAMPOS = ["sn","filial","valor","solicitante","competente","poder","cpfCnpj","favorecido","destinacao","complemento","banco","agencia","contaBancaria","chavePix","poderDispendio"];
 const OBRIGATORIOS = ["sn","filial","valor","solicitante","competente","poder","cpfCnpj","favorecido","destinacao","poderDispendio"];
 
 /**
@@ -163,7 +201,7 @@ function detectarColunas(palavrasHeader, palavrasPagina, yCentro) {
   const achar = (lista, origem, texto, maxDx, maxDy) =>
     lista.find((q) => q.texto === texto && Math.abs(q.x - origem.x) <= maxDx && Math.abs((q.y ?? 0) - (origem.y ?? 0)) <= maxDy);
 
-  let familia = null; // "A" (BANCO/AGÊNCIA/CONTA BANCÁRIA) ou "B" (OBSERVAÇÃO)
+  let familia = null; // "A" (BANCO/AGÊNCIA/CONTA BANCÁRIA), "B" (OBSERVAÇÃO) ou "PIX" (CHAVE PIX)
 
   for (let i = 0; i < p.length; i++) {
     const t = p[i].texto, x = p[i].x, y = p[i].y;
@@ -186,7 +224,38 @@ function detectarColunas(palavrasHeader, palavrasPagina, yCentro) {
     else if (t === "FAVORECIDO") add("favorecido", x, y);
     else if (t === "DESTINAÇÃO") add("destinacao", x, y);
     else if (t === "OBSERVAÇÃO") { add("complemento", x, y); familia = "B"; }  // família "DÉBITO/BOLETO"
-    else if (t === "BANCO") { add("complemento", x, y); familia = "A"; }      // família "TED/PIX/TRANSFERÊNCIA"
+    // Família "TED/PIX/TRANSFERÊNCIA" — até 29/09/2026 essas 3 colunas viravam
+    // uma "complemento" só (banco+agência+conta juntos numa string); separadas
+    // em 30/09/2026 pra alimentar o painel "Dados Bancários" do conferidor (ver
+    // comentário equivalente, com a calibração numérica, em COLUNAS.A acima —
+    // aqui o cabeçalho é lido dinamicamente, então não precisa de pixel fixo,
+    // só da MESMA lógica de "PODER DO DISPÊNDIO" acima: "CONTA" e "BANCÁRIA"
+    // são duas palavras do mesmo rótulo, achadas por proximidade em vez de
+    // adjacência de índice (confirmado nos relatórios reais: sempre na mesma
+    // linha, mas a mesma cautela do "PODER DO" protege contra uma quebra de
+    // linha que um relatório futuro venha a introduzir).
+    else if (t === "BANCO") { add("banco", x, y); familia = "A"; }
+    else if (t === "AGÊNCIA") add("agencia", x, y);
+    else if (t === "CONTA") {
+      const bancariaPerto = achar(p, p[i], "BANCÁRIA", 60, 10) || achar(palavrasPagina || [], { x, y }, "BANCÁRIA", 60, 20);
+      add("contaBancaria", x, y);
+      if (bancariaPerto) usedYs.add(Math.round(bancariaPerto.y));
+    }
+    // Família "PIX" (só existe no formato NOVO — o antigo mistura PIX dentro
+    // da família A, ver comentário grande logo abaixo de ancoras.forEach em
+    // parseRelatorio()): até 30/09/2026 essa seção não tinha handler NENHUM
+    // aqui (nem "BANCO" nem "OBSERVAÇÃO" davam match em "CHAVE PIX"), e o
+    // texto da chave (ex.: "CPF/CNPJ - 52831278000104") caía silenciosamente
+    // dentro de `destinacao` — bug real, achado em 30/09/2026 junto com o
+    // painel "Dados Bancários" (caso real: SN 1456140, novo.pdf/
+    // GetRelatorio_74.pdf), não só uma lacuna cosmética: CORROMPIA o campo de
+    // destinação/observação que o conferente lê pra auditar a solicitação.
+    else if (t === "CHAVE" && achar(p, p[i], "PIX", 30, 10)) {
+      const pixPerto = achar(p, p[i], "PIX", 30, 10);
+      add("chavePix", x, y);
+      familia = "PIX";
+      if (pixPerto) usedYs.add(Math.round(pixPerto.y));
+    }
   }
 
   const faltando = OBRIGATORIOS.filter((c) => !marcos.some((m) => m.campo === c));
@@ -203,19 +272,40 @@ function detectarColunas(palavrasHeader, palavrasPagina, yCentro) {
   //  - competente -> poder: PODER é só um código de 2 dígitos, então
   //    quase não precisa de folga à esquerda do próprio rótulo — dar a
   //    volta toda para COMPETENTE (nome da pessoa, pode ser longo).
-  //  - destinacao -> complemento e complemento -> poderDispendio: aqui a
-  //    proporção certa depende da FAMÍLIA da seção. Em "A" o complemento é
-  //    BANCO/AGÊNCIA/CONTA (curto); em "B" é OBSERVAÇÃO (texto livre, pode
-  //    ser longo) — por isso "B" recebe uma folga bem maior antes de
-  //    PODER DO DISPÊNDIO do que "A".
+  //  - destinacao -> banco/complemento e contaBancaria/complemento ->
+  //    poderDispendio: aqui a proporção certa depende da FAMÍLIA da seção.
+  //    Em "A" o que vem depois da destinação é o BANCO (código curto, 1 a 3
+  //    dígitos); em "B" é OBSERVAÇÃO (texto livre, pode ser longo) — por
+  //    isso "B" recebe uma folga bem maior antes de PODER DO DISPÊNDIO do
+  //    que "A". Mesma razão (0.92/0.94) usada desde quando "A" ainda era
+  //    uma "complemento" só — continua valendo porque o marco que ancora a
+  //    conta em "BANCO" (destinacao->banco) não mudou, e o marco que ancora
+  //    em "CONTA" pra poderDispendio ainda cai numa folga confortável em
+  //    cima de dados reais (ver checagem no comentário de COLUNAS.A, acima,
+  //    no formato antigo — a mesma posição relativa se repete no novo).
+  //  - agencia -> contaBancaria: o vão entre os RÓTULOS "AGÊNCIA" e "CONTA"
+  //    é mais apertado que o vão real entre os DADOS (a agência, com dígito
+  //    verificador, pode chegar bem perto do meio do vão de rótulo) — por
+  //    isso uma folga maior que 50/50 pra agência, calibrada contra dado
+  //    real de relatório (agência terminando em até x≈720, conta bancária
+  //    começando em x≈756 — ver novo.pdf, solicitação 1456133).
   // As demais transições ficam no corte 50/50 padrão — forçar uma razão
   // diferente nelas piorou o relatório novo sem necessidade (o vão entre
   // rótulos não muda de forma uniforme entre seções/famílias).
   const RATIOS = {
     poder: 0.93, // competente -> poder
   };
-  const RATIO_COMPLEMENTO = { A: 0.92, B: 0.71 };
-  const RATIO_PODER_DISPENDIO = { A: 0.94, B: 1.0 };
+  // PIX usa a mesma proporção de "B": CHAVE PIX também é texto que pode ser
+  // longo (e-mail, chave aleatória — ver comentário da família PIX, acima),
+  // então a destinação recebe a mesma folga generosa antes dela. Calibrado
+  // contra dado real (novo.pdf): mesmo assim o vão entre o fim do texto de
+  // destinação e o início do texto da chave PIX chega a ser tão apertado
+  // quanto 7pt num caso real — risco residual que fica registrado aqui: uma
+  // destinação MUITO longa numa solicitação PIX pode, em tese, invadir a
+  // coluna da chave (ou vice-versa). Não afeta banco/agência/conta (só PIX).
+  const RATIO_COMPLEMENTO = { A: 0.92, B: 0.71, PIX: 0.71 }; // destinacao -> banco (A) / complemento (B) / chavePix (PIX)
+  const RATIO_PODER_DISPENDIO = { A: 0.94, B: 1.0, PIX: 1.0 }; // contaBancaria (A) / complemento (B) / chavePix (PIX) -> poderDispendio
+  const RATIO_CONTA_BANCARIA = 0.8; // agencia -> contaBancaria (só família A)
 
   let inicio = 0;
   const colunas = [];
@@ -225,7 +315,8 @@ function detectarColunas(palavrasHeader, palavrasPagina, yCentro) {
     if (proximo) {
       const vao = proximo.x - atual.x;
       if (proximo.campo === "valor") fim = proximo.x - vao * 0.35;
-      else if (proximo.campo === "complemento") fim = atual.x + vao * (RATIO_COMPLEMENTO[familia] ?? 0.8);
+      else if (proximo.campo === "complemento" || proximo.campo === "banco" || proximo.campo === "chavePix") fim = atual.x + vao * (RATIO_COMPLEMENTO[familia] ?? 0.8);
+      else if (proximo.campo === "contaBancaria") fim = atual.x + vao * RATIO_CONTA_BANCARIA;
       else if (proximo.campo === "poderDispendio") fim = atual.x + vao * (RATIO_PODER_DISPENDIO[familia] ?? 0.95);
       else if (RATIOS[proximo.campo] != null) fim = atual.x + vao * RATIOS[proximo.campo];
     }
@@ -450,6 +541,24 @@ export async function parseRelatorio(arrayBuffer, pdfjsLib) {
       for (const [nome] of a.colunas) {
         const partes = (buf[nome] || []).sort((u, v) => u.y - v.y || u.x - v.x);
         reg[nome] = partes.map((p) => p.t).join(" ").trim();
+      }
+      // A família A (BANCO/AGÊNCIA/CONTA BANCÁRIA) também recebe PIX, e o
+      // relatório usa a MESMA faixa de colunas pra imprimir, em vez de banco
+      // real, o TIPO DE CHAVE PIX usada ("CPF/CNPJ", "E-MAIL", "CELULAR",
+      // "CHAVE ALEATÓRIA" — a chave em si fica na coluna seguinte) sempre que
+      // o pagamento não foi feito pra uma conta bancária tradicional. Achado
+      // em 30/09/2026 com um caso real (SN 1453021, formato antigo): o corte
+      // fixo de pixel produzia banco="CPF/CNPJ", agencia="- 53458300000185",
+      // contaBancaria="" — dado fabricado, não um banco/agência/conta de
+      // verdade. Não dá pra prever de antemão todo tipo de chave (é texto
+      // livre em alguns casos), então a defesa é por CONTEÚDO: código de
+      // banco é sempre 1 a 3 dígitos (confirmado em todos os relatórios reais
+      // usados pra calibrar esses cortes — ver COLUNAS.A); quando não é,
+      // assume-se chave PIX e os três pedaços voltam a ser juntados numa
+      // string só, sem tentar separar banco/agência/conta do que não é isso.
+      if (reg.banco !== undefined && reg.banco.trim() && !/^\d{1,3}$/.test(reg.banco.trim())) {
+        reg.chavePix = [reg.banco, reg.agencia, reg.contaBancaria].filter(Boolean).join(" ").trim();
+        reg.banco = ""; reg.agencia = ""; reg.contaBancaria = "";
       }
       if (/^\d{6,8}$/.test(reg.sn)) { reg.valor = num(reg.valor); solicitacoes.push(reg); }
     });
@@ -783,6 +892,19 @@ export function parseRelatorioExcel(arrayBuffer, XLSX) {
       cpfCnpj: textoCelulaExcel(XLSX, ws, r, colunasAtuais.cpfCnpj),
       favorecido: textoCelulaExcel(XLSX, ws, r, colunasAtuais.favorecido),
       destinacao: textoCelulaExcel(XLSX, ws, r, colunasAtuais.destinacao),
+      // banco/agencia/contaBancaria: só a família "A" (TED/TRANSFERÊNCIA) tem
+      // essas colunas no cabeçalho — detectarColunasExcel só preenche os
+      // índices quando o rótulo aparece, e textoCelulaExcel devolve "" pra
+      // índice undefined, então nas famílias B/PIX os três saem vazios sem
+      // precisar checar familiaAtual aqui. Adicionado em 30/09/2026 pro painel
+      // "Dados Bancários" do conferidor — ver o comentário de COLUNAS.A em
+      // parseRelatorio(), acima, pro mesmo dado vindo do caminho PDF.
+      banco: textoCelulaExcel(XLSX, ws, r, colunasAtuais.banco),
+      agencia: textoCelulaExcel(XLSX, ws, r, colunasAtuais.agencia),
+      contaBancaria: textoCelulaExcel(XLSX, ws, r, colunasAtuais.contaBancaria),
+      // complemento: mantido só pra não quebrar a busca por texto em
+      // mostrarResumo() (conferencia.js) — nas famílias B/PIX ainda é o único
+      // lugar onde observação/chave PIX aparecem no registro.
       complemento: montarComplementoExcel(XLSX, ws, r, colunasAtuais, familiaAtual),
       poderDispendio: textoCelulaExcel(XLSX, ws, r, colunasAtuais.poderDispendio),
       bancoDebitado: contaAtual,
