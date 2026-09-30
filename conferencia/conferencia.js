@@ -899,6 +899,29 @@ function render() {
   $("c-competente").textContent = s.competente || "—";
   $("c-favorecido").textContent =
     [s.favorecido, s.cpfCnpj].filter(Boolean).join("  ·  ") || "—";
+
+  // Painel "Dados Bancários" — banco/agência/conta (ou, quando a solicitação
+  // é PIX com uma chave não-bancária — CPF/CNPJ, e-mail, telefone, chave
+  // aleatória —, a própria chave) do FAVORECIDO. Ver parser.js (comentário
+  // no topo do arquivo e em COLUNAS.A) pro porquê de nem toda solicitação
+  // ter esse dado: família B (DÉBITO EM CONTA/BOLETO) nunca tem, porque o
+  // débito sai direto da mesma conta de origem. Fecha de novo a cada
+  // solicitação — não guarda estado de aberto/fechado entre uma e outra.
+  const temBanco = (s.banco || "").trim() && (s.agencia || "").trim() && (s.contaBancaria || "").trim();
+  const temChavePix = (s.chavePix || "").trim();
+  $("bloco-dados-bancarios").classList.toggle("oculto", !temBanco && !temChavePix);
+  $("c-dados-bancarios").classList.add("oculto");
+  $("btn-dados-bancarios").textContent = "▸ Dados Bancários";
+  $("c-dados-bancarios").innerHTML = temBanco
+    ? `Banco ${escAnexo(s.banco)} &nbsp;·&nbsp; Agência ${escAnexo(s.agencia)} &nbsp;·&nbsp; Conta ${escAnexo(s.contaBancaria)}`
+    : temChavePix
+      ? `Chave PIX: ${escAnexo(s.chavePix)}`
+      : "";
+  $("btn-dados-bancarios").onclick = () => {
+    const agoraOculto = $("c-dados-bancarios").classList.toggle("oculto");
+    $("btn-dados-bancarios").textContent = (agoraOculto ? "▸" : "▾") + " Dados Bancários";
+  };
+
   $("c-destinacao").textContent = s.destinacao || "—";
 
   const p = estado.pareceres[s.sn] || {};
@@ -1076,17 +1099,27 @@ function mostrarResumo() {
   // que na observação contenha almoço"). O relatório não tem um campo único
   // e sempre presente chamado "observação": a coluna "OBSERVAÇÃO" só existe
   // de fato nas famílias DÉBITO EM CONTA/BOLETO (vira s.complemento — ver
-  // montarComplementoExcel/COLUNAS em parser.js); em TED/TRANSFERÊNCIA/PIX
-  // esse mesmo s.complemento guarda dado bancário ou chave PIX, não uma
-  // observação. Por isso a busca cobre DOIS campos de texto livre de cada
-  // solicitação — s.destinacao (a "Destinação", sempre presente e é o texto
-  // mostrado em todo cartão da lista) e s.complemento (a "Observação" de
-  // fato, quando a solicitação for débito/boleto) — maximizando o que o
-  // termo pode encontrar sem tocar em campos que não são texto descritivo
-  // (favorecido, CPF/CNPJ, status etc.). Ponto que pode precisar de
-  // validação com o Rocha: se algum dia ele quiser a busca restrita só à
-  // coluna "Observação" literal (não à Destinação), o campo de busca abaixo
-  // deve trocar de `textoBusca` para olhar só `s.complemento`.
+  // COLUNAS/detectarColunas em parser.js). Por isso a busca cobre DOIS
+  // campos de texto livre de cada solicitação — s.destinacao (a
+  // "Destinação", sempre presente e é o texto mostrado em todo cartão da
+  // lista) e s.complemento (a "Observação" de fato, quando a solicitação
+  // for débito/boleto) — maximizando o que o termo pode encontrar sem tocar
+  // em campos que não são texto descritivo (favorecido, CPF/CNPJ, status
+  // etc.). NÃO inclui banco/agência/conta nem chave PIX (campos `banco`,
+  // `agencia`, `contaBancaria`, `chavePix` — ver painel "Dados Bancários",
+  // acima) — são dado estruturado, não texto descritivo, e ficam de fora da
+  // busca de propósito (30/09/2026). Ponto que já saiu diferente entre as
+  // duas origens do relatório e pode precisar de validação com o Rocha: no
+  // caminho EXCEL, `s.complemento` de uma solicitação TED/TRANSFERÊNCIA/PIX
+  // bancário ainda vem com banco+agência+conta juntos (compatibilidade —
+  // ver montarComplementoExcel em parser.js), então esse texto ENTRA na
+  // busca quando o relatório é Excel mas NÃO entra quando é PDF — uma
+  // pequena inconsistência entre as duas origens que não chegava a
+  // acontecer antes de 30/09/2026 (quando os dois caminhos guardavam tudo
+  // junto do mesmo jeito). Ponto que pode precisar de validação com o
+  // Rocha: se algum dia ele quiser a busca restrita só à coluna
+  // "Observação" literal (não à Destinação), o campo de busca abaixo deve
+  // trocar de `textoBusca` para olhar só `s.complemento`.
   const termoBusca = busca.trim().toLowerCase();
   const textoBusca = (s) => `${s.destinacao || ""} ${s.complemento || ""}`.toLowerCase();
   const visiveis = naAba
