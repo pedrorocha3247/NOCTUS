@@ -60,6 +60,18 @@
         <div class="campo"><label>Solicitante</label><div class="dado" id="c-solicitante">—</div></div>
         <div class="campo"><label>Competente</label><div class="dado" id="c-competente">—</div></div>
         <div class="campo largo"><label>Favorecido · CPF / CNPJ</label><div class="dado" id="c-favorecido">—</div></div>
+        <!-- Painel "Dados Bancários" (banco/agência/conta do FAVORECIDO — não
+             confundir com a conta de ORIGEM do débito, mostrada em outro
+             lugar da tela). Escondido por padrão (fecha de novo a cada
+             solicitação — ver render() em conferencia.js) e o bloco inteiro
+             some quando a solicitação não tem esse dado (família B —
+             DÉBITO EM CONTA/BOLETO — não tem banco/agência/conta nem chave
+             PIX de destino, só observação). Pedido do Rocha em 30/09/2026:
+             fica oculto no resumo (tela 3), só aparece aqui, sob um clique. -->
+        <div class="campo largo oculto" id="bloco-dados-bancarios">
+          <button type="button" class="linkbtn" id="btn-dados-bancarios">▸ Dados Bancários</button>
+          <div class="dado oculto" id="c-dados-bancarios" style="margin-top:.5rem"></div>
+        </div>
         <div class="campo largo"><label>Destinação</label><div class="dado" id="c-destinacao">—</div></div>
       </div>
 
