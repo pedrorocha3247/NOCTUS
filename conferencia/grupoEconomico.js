@@ -77,5 +77,5 @@ export function verificarGrupoEconomico(cpfCnpj) {
   if (!alvo) return null;
   const achado = CNPJS_GRUPO_POR_DIGITOS.get(alvo);
   if (!achado) return null;
-  return `Favorecido é empresa do grupo (${achado.rotulo}) — confira se é repasse intercompany`;
+  return `Favorecido é empresa do grupo (${achado.rotulo}) — confira se é repasse entre empresas`;
 }
