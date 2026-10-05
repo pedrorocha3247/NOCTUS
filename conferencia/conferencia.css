@@ -289,6 +289,9 @@ kbd{background:var(--color-surface-raised);border:1px solid var(--color-border);
 .config-item__texto{display:flex;flex-direction:column;gap:.2rem;max-width:46ch}
 .config-item__texto strong{font-size:.92rem}
 .config-item__acao{display:flex;align-items:center;gap:.5rem;flex-shrink:0}
+.config-item__acao--otn{flex-wrap:wrap;justify-content:flex-end}
+.otn-input--mes{width:9.5rem}
+.otn-input--hist{width:auto;min-width:15rem;max-width:100%}
 .config-item__prefixo{color:var(--color-text-muted);font-size:.85rem;font-weight:600}
 .config-item__acao .botao{width:auto;padding:.45rem 1rem}
 .parecer__apontamento{margin-top:.45rem;padding:.35rem .55rem;font-size:.78rem;line-height:1.35;
