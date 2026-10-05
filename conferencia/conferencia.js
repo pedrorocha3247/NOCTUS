@@ -46,11 +46,66 @@ const $ = (id) => document.getElementById(id);
 const moeda = (v) =>
   (v ?? 0).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
+/**
+ * Histórico mensal do OTN (pedido do Rocha em 05/10/2026): o valor muda todo
+ * mês, e quem confere precisa enxergar — e consultar — o que valeu em cada um
+ * (ex.: 09/2026 = 130,30; 10/2026 = 132,34), em vez de só o último digitado.
+ *
+ * Guardado como JSON { "AAAA-MM": valor } em CHAVE_OTN_HIST. Ficar por mês (e
+ * não uma lista de "alterações com data") garante UM valor por mês: salvar de
+ * novo no mesmo mês corrige o anterior em vez de empilhar duplicata.
+ *
+ * Valor VIGENTE = o do mês mais recente cadastrado que não seja posterior ao
+ * mês corrente. Assim, se o mês virou e ninguém atualizou, continua valendo o
+ * último conhecido (e o aviso de "atualize o OTN" cobra a atualização), em vez
+ * de cair no padrão e mudar os apontamentos de poder sem ninguém perceber.
+ */
+const CHAVE_OTN_HIST = "noctus.otn.historico";
+const OTN_HISTORICO_INICIAL = { "2026-09": OTN_PADRAO };
+const MESES_PT = ["janeiro", "fevereiro", "março", "abril", "maio", "junho",
+  "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
+const ehMesRef = (s) => /^\d{4}-(0[1-9]|1[0-2])$/.test(String(s || ""));
+const rotuloMes = (ym) => `${MESES_PT[Number(ym.slice(5, 7)) - 1]}/${ym.slice(0, 4)}`;
+/** Mês corrente no formato AAAA-MM (fuso do navegador). */
+const mesAtual = (d = new Date()) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+
+/** Lê o histórico (só entradas válidas: mês AAAA-MM e valor > 0). Nunca lança. */
+function lerHistoricoOtn() {
+  let bruto = {};
+  try { bruto = JSON.parse(localStorage.getItem(CHAVE_OTN_HIST)) || {}; } catch { bruto = {}; }
+  const hist = {};
+  for (const [ym, v] of Object.entries(bruto)) {
+    const n = Number(v);
+    if (ehMesRef(ym) && isFinite(n) && n > 0) hist[ym] = n;
+  }
+  return hist;
+}
+const gravarHistoricoOtn = (hist) =>
+  localStorage.setItem(CHAVE_OTN_HIST, JSON.stringify(hist));
+
+/** Pura: valor vigente em `ym` dado um histórico (mês mais recente ≤ ym; senão o padrão). */
+function otnVigenteEm(hist, ym) {
+  const meses = Object.keys(hist).filter((m) => m <= ym).sort();
+  return meses.length ? hist[meses[meses.length - 1]] : OTN_PADRAO;
+}
+
+/**
+ * Primeira execução com histórico: parte do que o Rocha informou (09/2026 =
+ * 130,30) e, se já havia um OTN salvo na versão sem histórico (CHAVE_OTN) que
+ * difere disso, registra esse valor no MÊS CORRENTE — foi digitado agora, é o
+ * valor que vale hoje. Roda uma vez (some depois que o histórico existe).
+ */
+function migrarOtn() {
+  if (localStorage.getItem(CHAVE_OTN_HIST) !== null) return;
+  const hist = { ...OTN_HISTORICO_INICIAL };
+  const antigo = parseFloat(localStorage.getItem(CHAVE_OTN));
+  if (isFinite(antigo) && antigo > 0 && antigo !== OTN_PADRAO) hist[mesAtual()] = antigo;
+  gravarHistoricoOtn(hist);
+}
+
 /** Valor do OTN usado pra converter o limite de poder (em OTN) para reais. */
-const otnAtual = () => {
-  const v = parseFloat(localStorage.getItem(CHAVE_OTN));
-  return isFinite(v) && v > 0 ? v : OTN_PADRAO;
-};
+const otnAtual = () => otnVigenteEm(lerHistoricoOtn(), mesAtual());
 
 let estado = { dados: null, itens: [], pareceres: {}, removidas: [], i: 0, mesclagem: null };
 
@@ -359,6 +414,7 @@ function irPara(tela) {
   for (const t of ["upload", "revisao", "resumo", "config"])
     $("tela-" + t).classList.toggle("oculto", t !== tela);
   telaAtual = tela;
+  if (tela === "upload") renderAvisoOtn();
   const a = $("voltar-topo");
   if (a) {
     a.textContent = tela === "upload" ? "Voltar" : "Voltar ao relatório";
@@ -395,7 +451,10 @@ let configAbertaViaHome = false;
 function abrirConfig() {
   if (!ehAdmin()) return;
   if (telaAtual !== "config") telaAntesConfig = telaAtual;
-  $("cfg-otn").value = otnAtual();
+  // O mês de referência volta SEMPRE pro mês corrente ao abrir (pedido do
+  // Rocha: "sempre que atualizar o mês ele atualiza sozinho para o mês atual"),
+  // e o valor mostrado é o vigente nele — assim basta corrigir o número.
+  carregarMesNaConfig(mesAtual());
   $("cfg-msg").innerHTML = "";
   irPara("config");
   if (configAbertaViaHome) {
@@ -460,19 +519,95 @@ function recalcularPoderes() {
   calcularPoderes(estado.dados.meta, estado.dados.solicitacoes);
 }
 
-function salvarOtn(v) {
+/** Preenche o seletor "Consultar mês" com os meses cadastrados (mais recente primeiro). */
+function renderHistoricoOtn(selecionado) {
+  const hist = lerHistoricoOtn();
+  const hoje = mesAtual();
+  const vigenteDesde = Object.keys(hist).filter((m) => m <= hoje).sort().pop();
+  const meses = Object.keys(hist).sort().reverse();
+  $("cfg-hist").innerHTML = meses.map((m) =>
+    `<option value="${m}"${m === selecionado ? " selected" : ""}>${rotuloMes(m)} — R$ ${moeda(hist[m])}${
+      m === vigenteDesde ? " (vigente)" : m > hoje ? " (futuro)" : ""}</option>`).join("");
+  // sem entrada exata pro mês escolhido (ex.: mês corrente ainda não atualizado)
+  // nenhuma opção fica marcada — o navegador marcaria a primeira, o que enganaria
+  if (!selecionado || !(selecionado in hist)) $("cfg-hist").selectedIndex = -1;
+}
+
+/**
+ * Põe `ym` no campo de mês de referência e mostra o valor dele: o cadastrado
+ * naquele mês, ou — se ainda não existe — o vigente, como ponto de partida.
+ */
+function carregarMesNaConfig(ym) {
+  const hist = lerHistoricoOtn();
+  $("cfg-mes").value = ym;
+  $("cfg-otn").value = ym in hist ? hist[ym] : otnVigenteEm(hist, ym);
+  renderHistoricoOtn(ym);
+}
+
+/**
+ * Grava o OTN de um mês. Recalcula os apontamentos de poder com o OTN VIGENTE
+ * (o do mês corrente) — salvar um mês antigo ou futuro só mexe no histórico,
+ * não no que vale hoje.
+ */
+function salvarOtn(v, ym) {
   if (!isFinite(v) || v <= 0) {
     $("cfg-msg").innerHTML =
       `<div class="alerta erro">Informe um valor de OTN maior que zero.</div>`;
     return;
   }
-  localStorage.setItem(CHAVE_OTN, String(v));
+  if (!ehMesRef(ym)) {
+    $("cfg-msg").innerHTML =
+      `<div class="alerta erro">Informe o mês de referência (ex.: 2026-10).</div>`;
+    return;
+  }
+  const hist = lerHistoricoOtn();
+  const anterior = hist[ym];
+  hist[ym] = Math.round(v * 100) / 100;
+  gravarHistoricoOtn(hist);
   recalcularPoderes();
   if (estado.dados) salvar();
-  $("cfg-otn").value = otnAtual();
+  carregarMesNaConfig(ym);
+  renderAvisoOtn();
+  const vigente = otnAtual();
+  const nota = ym === mesAtual()
+    ? `Os apontamentos de poder da conferência aberta foram recalculados.`
+    : `Isto não altera o OTN em uso hoje (${rotuloMes(mesAtual())}: R$ ${moeda(vigente)}).`;
   $("cfg-msg").innerHTML =
-    `<div class="alerta ok">OTN atualizado para R$ ${moeda(otnAtual())}.
-      Os apontamentos de poder da conferência aberta foram recalculados.</div>`;
+    `<div class="alerta ok">OTN de ${rotuloMes(ym)} ${anterior === undefined ? "salvo" : "corrigido"}:
+      R$ ${moeda(hist[ym])}. ${nota}</div>`;
+}
+
+/**
+ * Aviso na tela inicial do módulo (só pro admin, único que mexe no OTN): a
+ * partir do dia 1º de cada mês, enquanto o mês corrente não tiver valor
+ * cadastrado, lembra de atualizar. Cobrir "do dia 1º até atualizar" — e não só
+ * o dia 1º — é de propósito: quem não abre o sistema no dia 1º (fim de semana,
+ * feriado) perderia o lembrete e conferiria o mês todo com o OTN velho.
+ * "Manter" registra o mês com o valor vigente, pra quando o OTN não mudou.
+ */
+function renderAvisoOtn() {
+  const caixa = $("aviso-otn");
+  if (!caixa) return;
+  const hist = lerHistoricoOtn();
+  const hoje = mesAtual();
+  if (!ehAdmin() || hoje in hist) { caixa.innerHTML = ""; return; }
+  const vigente = otnVigenteEm(hist, hoje);
+  const desde = Object.keys(hist).filter((m) => m <= hoje).sort().pop();
+  caixa.innerHTML = `<div class="alerta">
+      <strong>Atualize o valor do OTN de ${rotuloMes(hoje)}.</strong>
+      Ainda está valendo R$ ${moeda(vigente)}${desde ? `, de ${rotuloMes(desde)}` : " (padrão)"} — os limites de poder
+      são convertidos com esse valor.
+      <div style="margin-top:.5rem;display:flex;gap:.8rem;flex-wrap:wrap">
+        <button type="button" class="linkbtn" id="aviso-otn-atualizar">Atualizar agora</button>
+        <button type="button" class="linkbtn" id="aviso-otn-manter">Manter R$ ${moeda(vigente)} em ${rotuloMes(hoje)}</button>
+      </div></div>`;
+  $("aviso-otn-atualizar").onclick = () => abrirConfig();
+  $("aviso-otn-manter").onclick = () => {
+    const h = lerHistoricoOtn();
+    h[hoje] = vigente;
+    gravarHistoricoOtn(h);
+    renderAvisoOtn();
+  };
 }
 
 function ligarConfig() {
@@ -482,15 +617,13 @@ function ligarConfig() {
     else abrir.onclick = () => abrirConfig();
   }
   $("cfg-salvar").onclick = () =>
-    salvarOtn(parseFloat(String($("cfg-otn").value).replace(",", ".")));
-  $("cfg-padrao").onclick = () => {
-    localStorage.removeItem(CHAVE_OTN);
-    recalcularPoderes();
-    if (estado.dados) salvar();
-    $("cfg-otn").value = otnAtual();
-    $("cfg-msg").innerHTML =
-      `<div class="alerta ok">OTN voltou ao padrão de R$ ${moeda(OTN_PADRAO)}.</div>`;
-  };
+    salvarOtn(parseFloat(String($("cfg-otn").value).replace(",", ".")), $("cfg-mes").value);
+  // trocar o mês de referência (ou escolher um da lista) já mostra o valor daquele mês
+  $("cfg-mes").onchange = () => { if (ehMesRef($("cfg-mes").value)) carregarMesNaConfig($("cfg-mes").value); };
+  $("cfg-hist").onchange = () => carregarMesNaConfig($("cfg-hist").value);
+  // "Restaurar padrão": grava o padrão (130,30) NO MÊS mostrado — não apaga
+  // histórico, e dá pra desfazer só regravando o valor certo.
+  $("cfg-padrao").onclick = () => salvarOtn(OTN_PADRAO, $("cfg-mes").value || mesAtual());
   $("cfg-concluir").onclick = () => fecharConfig();
 }
 
@@ -2340,8 +2473,10 @@ async function imprimirDia(btn, data) {
 
 /* ------------------------------------------------------------------------- início */
 migrarChaves();
+migrarOtn();
 ligarVoltar();
 ligarConfig();
+renderAvisoOtn();
 ligarUpload();
 $("btn-planilha-geral").onclick = gerarPlanilhaGeral;
 ligarRevisao();
