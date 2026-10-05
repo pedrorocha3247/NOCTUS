@@ -24,6 +24,7 @@
 
   <!-- 1. upload -->
   <section id="tela-upload" class="cartao">
+    <div id="aviso-otn"></div>
     <h2>Novo relatório</h2>
     <div class="solta" id="solta">
       <strong>Clique para escolher o relatório</strong>
@@ -183,13 +184,29 @@
         <div class="config-item__texto">
           <strong>Valor do OTN</strong>
           <span class="sub">Converte para reais os limites de poder, que a Relação de
-            Competentes e Poderes cadastra em OTN. O valor muda ao longo do tempo.</span>
+            Competentes e Poderes cadastra em OTN. O valor muda todo mês: cada
+            valor fica guardado com o mês de referência, e o que vale hoje é o do
+            mês mais recente já cadastrado.</span>
         </div>
-        <div class="config-item__acao">
+        <div class="config-item__acao config-item__acao--otn">
           <span class="config-item__prefixo">R$</span>
           <input type="number" step="0.01" min="0.01" id="cfg-otn" class="otn-input"
                  aria-label="Valor do OTN em reais">
+          <label class="sub" for="cfg-mes">Mês de referência</label>
+          <input type="month" id="cfg-mes" class="otn-input otn-input--mes"
+                 placeholder="AAAA-MM" pattern="\d{4}-\d{2}">
           <button type="button" class="botao fantasma" id="cfg-salvar">Salvar</button>
+        </div>
+      </div>
+
+      <div class="config-item">
+        <div class="config-item__texto">
+          <strong>Consultar mês</strong>
+          <span class="sub">Escolha um mês para ver o OTN daquela data. Ele aparece nos
+            campos acima e, se quiser corrigi-lo, é só alterar e salvar.</span>
+        </div>
+        <div class="config-item__acao">
+          <select id="cfg-hist" class="otn-input otn-input--hist" aria-label="Meses com OTN cadastrado"></select>
         </div>
       </div>
 
