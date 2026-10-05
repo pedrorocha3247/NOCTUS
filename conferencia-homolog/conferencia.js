@@ -62,8 +62,12 @@ const moeda = (v) =>
  */
 const CHAVE_OTN_HIST = "noctus.otn.historico";
 const OTN_HISTORICO_INICIAL = { "2026-09": OTN_PADRAO };
-const MESES_PT = ["janeiro", "fevereiro", "março", "abril", "maio", "junho",
-  "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
+// Nomes com inicial maiúscula (pedido do Rocha em 05/10/2026), usados em toda a
+// interface do OTN: "Outubro/2026".
+const MESES_PT = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+  "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
+const MESES_ABR = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun",
+  "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
 const ehMesRef = (s) => /^\d{4}-(0[1-9]|1[0-2])$/.test(String(s || ""));
 const rotuloMes = (ym) => `${MESES_PT[Number(ym.slice(5, 7)) - 1]}/${ym.slice(0, 4)}`;
 /** Mês corrente no formato AAAA-MM (fuso do navegador). */
@@ -455,6 +459,7 @@ function abrirConfig() {
   // Rocha: "sempre que atualizar o mês ele atualiza sozinho para o mês atual"),
   // e o valor mostrado é o vigente nele — assim basta corrigir o número.
   carregarMesNaConfig(mesAtual());
+  fecharPopsOtn();
   $("cfg-msg").innerHTML = "";
   irPara("config");
   if (configAbertaViaHome) {
@@ -519,28 +524,78 @@ function recalcularPoderes() {
   calcularPoderes(estado.dados.meta, estado.dados.solicitacoes);
 }
 
+/**
+ * Seletores do OTN. Não usam <select> nem <input type="month"> de propósito: a
+ * lista que o navegador abre é desenhada pelo sistema operacional (fundo
+ * branco, mês em minúsculas, "fevereiro de 2026" espremido no campo) e não dá
+ * pra estilizar. Aqui são botões + um painel próprio, no tema escuro do módulo.
+ */
+function fecharPopsOtn() {
+  for (const id of ["cfg-mes", "cfg-hist"]) {
+    $(id + "-pop").classList.add("oculto");
+    $(id + "-btn").setAttribute("aria-expanded", "false");
+  }
+}
+
+function abrirPopOtn(id) {
+  const jaAberto = !$(id + "-pop").classList.contains("oculto");
+  fecharPopsOtn();
+  if (jaAberto) return;
+  if (id === "cfg-mes") renderMesPop(Number(($("cfg-mes").value || mesAtual()).slice(0, 4)));
+  $(id + "-pop").classList.remove("oculto");
+  $(id + "-btn").setAttribute("aria-expanded", "true");
+}
+
+/** Painel do mês de referência: ano com setas e grade de 12 meses. */
+function renderMesPop(ano) {
+  const hist = lerHistoricoOtn();
+  const sel = $("cfg-mes").value, hoje = mesAtual();
+  $("cfg-mes-pop").dataset.verAno = ano;
+  $("cfg-mes-pop").innerHTML = `
+    <div class="pop__topo">
+      <button type="button" class="pop__nav" data-ano="-1" aria-label="Ano anterior">&#8249;</button>
+      <strong>${ano}</strong>
+      <button type="button" class="pop__nav" data-ano="1" aria-label="Próximo ano">&#8250;</button>
+    </div>
+    <div class="pop__meses">${MESES_ABR.map((nome, i) => {
+      const ym = `${ano}-${String(i + 1).padStart(2, "0")}`;
+      return `<button type="button" class="pop__mes${ym === sel ? " on" : ""}${ym === hoje ? " hoje" : ""}${ym in hist ? " tem" : ""}" data-ym="${ym}">${nome}</button>`;
+    }).join("")}</div>
+    <div class="pop__rodape">
+      <span class="pop__legenda">Ponto = mês com OTN cadastrado</span>
+      <button type="button" class="linkbtn" data-ym="${hoje}">Mês atual</button>
+    </div>`;
+}
+
 /** Preenche o seletor "Consultar mês" com os meses cadastrados (mais recente primeiro). */
 function renderHistoricoOtn(selecionado) {
   const hist = lerHistoricoOtn();
   const hoje = mesAtual();
   const vigenteDesde = Object.keys(hist).filter((m) => m <= hoje).sort().pop();
   const meses = Object.keys(hist).sort().reverse();
-  $("cfg-hist").innerHTML = meses.map((m) =>
-    `<option value="${m}"${m === selecionado ? " selected" : ""}>${rotuloMes(m)} — R$ ${moeda(hist[m])}${
-      m === vigenteDesde ? " (vigente)" : m > hoje ? " (futuro)" : ""}</option>`).join("");
+  const tag = (m) => m === vigenteDesde ? "vigente" : m > hoje ? "futuro" : "";
+  $("cfg-hist-pop").innerHTML = meses.map((m) =>
+    `<button type="button" class="pop__item${m === selecionado ? " on" : ""}" data-ym="${m}">
+       <span class="pop__item-mes">${rotuloMes(m)}</span>
+       <span class="pop__item-valor">R$ ${moeda(hist[m])}</span>
+       <span class="pop__item-tag">${tag(m)}</span>
+     </button>`).join("");
   // sem entrada exata pro mês escolhido (ex.: mês corrente ainda não atualizado)
-  // nenhuma opção fica marcada — o navegador marcaria a primeira, o que enganaria
-  if (!selecionado || !(selecionado in hist)) $("cfg-hist").selectedIndex = -1;
+  // não finge que há uma seleção
+  $("cfg-hist-btn").innerHTML = selecionado in hist
+    ? `<span>${rotuloMes(selecionado)}</span><span class="pop__item-valor">R$ ${moeda(hist[selecionado])}</span>`
+    : `<span>Selecione um mês</span>`;
 }
 
 /**
  * Põe `ym` no campo de mês de referência e mostra o valor dele: o cadastrado
- * naquele mês, ou — se ainda não existe — o vigente, como ponto de partida.
+ * naquele mês, ou, se ainda não existe, o vigente, como ponto de partida.
  */
 function carregarMesNaConfig(ym) {
   const hist = lerHistoricoOtn();
   $("cfg-mes").value = ym;
-  $("cfg-otn").value = ym in hist ? hist[ym] : otnVigenteEm(hist, ym);
+  $("cfg-mes-btn").textContent = rotuloMes(ym);
+  $("cfg-otn").value = (ym in hist ? hist[ym] : otnVigenteEm(hist, ym)).toFixed(2);
   renderHistoricoOtn(ym);
 }
 
@@ -595,8 +650,8 @@ function renderAvisoOtn() {
   const desde = Object.keys(hist).filter((m) => m <= hoje).sort().pop();
   caixa.innerHTML = `<div class="alerta">
       <strong>Atualize o valor do OTN de ${rotuloMes(hoje)}.</strong>
-      Ainda está valendo R$ ${moeda(vigente)}${desde ? `, de ${rotuloMes(desde)}` : " (padrão)"} — os limites de poder
-      são convertidos com esse valor.
+      Ainda está valendo R$ ${moeda(vigente)}${desde ? ` (de ${rotuloMes(desde)})` : " (padrão)"}.
+      Os limites de poder são convertidos com esse valor.
       <div style="margin-top:.5rem;display:flex;gap:.8rem;flex-wrap:wrap">
         <button type="button" class="linkbtn" id="aviso-otn-atualizar">Atualizar agora</button>
         <button type="button" class="linkbtn" id="aviso-otn-manter">Manter R$ ${moeda(vigente)} em ${rotuloMes(hoje)}</button>
@@ -619,8 +674,22 @@ function ligarConfig() {
   $("cfg-salvar").onclick = () =>
     salvarOtn(parseFloat(String($("cfg-otn").value).replace(",", ".")), $("cfg-mes").value);
   // trocar o mês de referência (ou escolher um da lista) já mostra o valor daquele mês
-  $("cfg-mes").onchange = () => { if (ehMesRef($("cfg-mes").value)) carregarMesNaConfig($("cfg-mes").value); };
-  $("cfg-hist").onchange = () => carregarMesNaConfig($("cfg-hist").value);
+  $("cfg-mes-btn").onclick = (e) => { e.stopPropagation(); abrirPopOtn("cfg-mes"); };
+  $("cfg-hist-btn").onclick = (e) => { e.stopPropagation(); abrirPopOtn("cfg-hist"); };
+  $("cfg-mes-pop").onclick = (e) => {
+    e.stopPropagation();
+    const nav = e.target.closest(".pop__nav");
+    if (nav) { renderMesPop(Number($("cfg-mes-pop").dataset.verAno) + Number(nav.dataset.ano)); return; }
+    const mes = e.target.closest("[data-ym]");
+    if (mes) { carregarMesNaConfig(mes.dataset.ym); fecharPopsOtn(); }
+  };
+  $("cfg-hist-pop").onclick = (e) => {
+    e.stopPropagation();
+    const mes = e.target.closest("[data-ym]");
+    if (mes) { carregarMesNaConfig(mes.dataset.ym); fecharPopsOtn(); }
+  };
+  document.addEventListener("click", fecharPopsOtn);
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") fecharPopsOtn(); });
   // "Restaurar padrão": grava o padrão (130,30) NO MÊS mostrado — não apaga
   // histórico, e dá pra desfazer só regravando o valor certo.
   $("cfg-padrao").onclick = () => salvarOtn(OTN_PADRAO, $("cfg-mes").value || mesAtual());
