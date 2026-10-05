@@ -461,6 +461,7 @@ function abrirConfig() {
   carregarMesNaConfig(mesAtual());
   fecharPopsOtn();
   $("cfg-msg").innerHTML = "";
+  carregarUsuarios();
   irPara("config");
   if (configAbertaViaHome) {
     const a = $("voltar-topo");
@@ -522,6 +523,46 @@ function calcularPoderes(meta, solicitacoes) {
 function recalcularPoderes() {
   if (!estado.dados) return;
   calcularPoderes(estado.dados.meta, estado.dados.solicitacoes);
+}
+
+/**
+ * Lista de usuários cadastrados (só o administrador vê). Duas travas: a tela já
+ * só abre para ehAdmin(), e aqui o servidor confirma o dono do token antes de
+ * buscar os dados (adminConfirmadoNoServidor). O e-mail não é mostrado: nos
+ * cadastros pelo site ele é gerado pelo sistema (usuario@noctus.app) e não
+ * serve pra nada na conferência.
+ */
+async function carregarUsuarios() {
+  const caixa = $("cfg-usuarios-lista");
+  if (!caixa) return;
+  caixa.innerHTML = `<p class="sub">Carregando usuários...</p>`;
+  if (!(await adminConfirmadoNoServidor())) {
+    caixa.innerHTML = `<div class="alerta erro">Não foi possível confirmar o administrador no servidor.
+      Saia e entre de novo no NOCTUS para ver os usuários.</div>`;
+    return;
+  }
+  try {
+    const r = await fetch(
+      `${SB_URL}/rest/v1/usuarios_noctus?select=username,display_name,roles,created_at&order=created_at.asc`,
+      { headers: { apikey: SB_KEY, Authorization: `Bearer ${sessaoAtual().accessToken}` } });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const lista = await r.json();
+    if (!Array.isArray(lista)) throw new Error("resposta inesperada");
+    const linhas = lista.map((u) => {
+      const adm = Array.isArray(u.roles) && u.roles.includes("admin");
+      const data = u.created_at ? new Date(u.created_at).toLocaleDateString("pt-BR") : "";
+      return `<tr><td>${escAnexo(u.display_name || u.username)}</td>
+        <td class="usuarios__user">${escAnexo(u.username)}</td>
+        <td><span class="usuarios__perfil${adm ? " usuarios__perfil--adm" : ""}">${adm ? "Administrador" : "Usuário"}</span></td>
+        <td>${escAnexo(data)}</td></tr>`;
+    }).join("");
+    caixa.innerHTML = `<table class="usuarios-tabela">
+        <thead><tr><th>Nome</th><th>Usuário</th><th>Perfil</th><th>Cadastro</th></tr></thead>
+        <tbody>${linhas}</tbody></table>
+      <p class="sub">${lista.length} ${lista.length === 1 ? "usuário cadastrado" : "usuários cadastrados"}.</p>`;
+  } catch (e) {
+    caixa.innerHTML = `<div class="alerta erro">Não consegui carregar os usuários (${escAnexo(e.message)}).</div>`;
+  }
 }
 
 /**
@@ -693,6 +734,7 @@ function ligarConfig() {
   // "Restaurar padrão": grava o padrão (130,30) NO MÊS mostrado — não apaga
   // histórico, e dá pra desfazer só regravando o valor certo.
   $("cfg-padrao").onclick = () => salvarOtn(OTN_PADRAO, $("cfg-mes").value || mesAtual());
+  $("cfg-usuarios-atualizar").onclick = () => carregarUsuarios();
   $("cfg-concluir").onclick = () => fecharConfig();
 }
 
@@ -1585,10 +1627,45 @@ function usuarioAtual() {
   return sessaoAtual()?.user || null;
 }
 
-/** true só para quem tem o papel "admin" (hoje: só o usuário fixo original). */
+/**
+ * O administrador do NOCTUS é UMA pessoa só, o Rocha (pedido dele em
+ * 05/10/2026: "só eu vou poder ter acesso a opção de configurações"). Por isso
+ * o papel "admin" sozinho não basta: a sessão também precisa ser a do usuário
+ * fixo "Pedro Rocha" (o mesmo cadastrado em dd, no app.js, com e-mail abaixo).
+ * Quem se cadastra pelo site sempre nasce "user" (função noctus-signup) e o
+ * cadastro com esse nome é recusado por já existir — então, na prática, o
+ * papel só chega a quem é o Rocha; a segunda trava cobre o dia em que alguém
+ * receber "admin" direto no banco por engano.
+ */
+const ADMIN_USUARIO = "pedro rocha";
+const ADMIN_EMAIL = "pedro.rocha@momentum.com.br";
+
+/** true só para o administrador: papel "admin" E a identidade do Rocha. */
 function ehAdmin() {
   const u = usuarioAtual();
-  return !!u && Array.isArray(u.roles) && u.roles.includes("admin");
+  if (!u || !Array.isArray(u.roles) || !u.roles.includes("admin")) return false;
+  return [u.username, u.displayName, u.id]
+    .some((v) => String(v || "").trim().toLowerCase() === ADMIN_USUARIO);
+}
+
+/**
+ * Confere NO SERVIDOR quem é o dono do token da sessão (Supabase /auth/v1/user)
+ * e só aceita o e-mail do administrador. O ehAdmin() acima lê o papel guardado
+ * no navegador, que qualquer pessoa consegue editar pelo DevTools; esta é a
+ * confirmação que não dá pra forjar localmente, usada antes de mostrar a lista
+ * de usuários (dado de outras pessoas).
+ */
+async function adminConfirmadoNoServidor() {
+  const token = sessaoAtual()?.accessToken;
+  if (!token) return false;
+  try {
+    const r = await fetch(`${SB_URL}/auth/v1/user`, {
+      headers: { apikey: SB_KEY, Authorization: `Bearer ${token}` },
+    });
+    if (!r.ok) return false;
+    const j = await r.json();
+    return String(j?.email || "").trim().toLowerCase() === ADMIN_EMAIL;
+  } catch { return false; }
 }
 
 /**
