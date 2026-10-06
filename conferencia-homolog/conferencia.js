@@ -757,6 +757,26 @@ function ligarUpload() {
 const diasAbertos = {};
 
 /**
+ * Ocultação por idade (pedido do Rocha em 06/10/2026, "continuamos na
+ * segurança"): conferências de dias com mais de DIAS_VISIVEIS dias saem da
+ * lista da tela inicial, pra quem passa atrás da tela não ver o histórico todo.
+ * É só OCULTAÇÃO: nada é apagado (continuam no navegador, no "Relatório geral"
+ * e acessíveis pelo link "Mostrar anteriores"). A escolha de mostrar vale
+ * enquanto a aba viver e volta a ocultar ao recarregar, de propósito.
+ */
+const DIAS_VISIVEIS = 5;
+let mostrarAntigos = false;
+
+/** Idade, em dias corridos, de uma data "dd/mm/aaaa" até hoje (null se a data não for válida). */
+function idadeEmDias(dataBR, hoje = new Date()) {
+  const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(String(dataBR || ""));
+  if (!m) return null;
+  const dia = new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]));
+  const base = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate());
+  return Math.round((base - dia) / 86400000);
+}
+
+/**
  * Lista as conferências guardadas neste navegador.
  * `confirmando` é a chave do lote que está pedindo confirmação de remoção —
  * confirmação inline, e não confirm() nativo, que congela a página.
@@ -776,9 +796,19 @@ function renderRetomar(confirmando) {
     else dias.push({ data: l.data, lotes: [l] });
   }
 
+  // dias com mais de DIAS_VISIVEIS dias ficam ocultos (data inválida/"sem data"
+  // não dá pra medir a idade: fica à vista em vez de sumir sem explicação). O
+  // dia que está pedindo confirmação de remoção nunca pode estar escondido.
+  const antigo = (d) => { const n = idadeEmDias(d.data); return n !== null && n > DIAS_VISIVEIS; };
+  const confirmandoAntigo = !!confirmando &&
+    dias.some((d) => antigo(d) && d.lotes.some((l) => l.chave === confirmando));
+  const veAntigos = mostrarAntigos || confirmandoAntigo;
+  const ocultos = dias.filter(antigo);
+  const visiveis = veAntigos ? dias : dias.filter((d) => !antigo(d));
+
   // o dia mais recente abre; os anteriores ficam recolhidos, senão a lista
   // cresce indefinidamente. A escolha do conferente vale enquanto a aba viver.
-  dias.forEach((d, i) => {
+  visiveis.forEach((d, i) => {
     if (!(d.data in diasAbertos)) diasAbertos[d.data] = i === 0;
     // o dia que está pedindo confirmação de remoção não pode estar escondido
     if (confirmando && d.lotes.some((l) => l.chave === confirmando)) diasAbertos[d.data] = true;
@@ -806,9 +836,19 @@ function renderRetomar(confirmando) {
       </span>
     </div>`;
 
+  const nOcultas = ocultos.reduce((n, d) => n + d.lotes.length, 0);
+  const rodapeAntigos = !ocultos.length ? "" : `
+    <div class="antigos">
+      <button class="linkbtn" data-acao="alternar-antigos">${veAntigos
+        ? `Ocultar dias anteriores a ${DIAS_VISIVEIS} dias`
+        : `Mostrar ${ocultos.length} ${ocultos.length === 1 ? "dia anterior" : "dias anteriores"}
+           (${nOcultas} ${nOcultas === 1 ? "conferência" : "conferências"}, com mais de ${DIAS_VISIVEIS} dias)`}</button>
+    </div>`;
+
   caixa.innerHTML =
     `<p class="sub" style="margin-bottom:.6rem">Conferências em andamento neste navegador:</p>` +
-    dias.map((d) => {
+    (visiveis.length ? "" : `<p class="sub">Nenhuma conferência nos últimos ${DIAS_VISIVEIS} dias.</p>`) +
+    visiveis.map((d) => {
       const aberto = diasAbertos[d.data];
       const pend = d.lotes.filter((l) => l.feitos < l.total).length;
       return `
@@ -826,11 +866,16 @@ function renderRetomar(confirmando) {
         </div>
         ${aberto ? d.lotes.map(linha).join("") : ""}
       </div>`;
-    }).join("");
+    }).join("") + rodapeAntigos;
 
   caixa.querySelectorAll("button").forEach((b) => {
     b.onclick = () => {
       const { acao, chave, dia } = b.dataset;
+      if (acao === "alternar-antigos") {
+        mostrarAntigos = !mostrarAntigos;
+        renderRetomar(confirmando);
+        return;
+      }
       if (acao === "alternar-dia") {
         diasAbertos[b.dataset.dia] = !diasAbertos[b.dataset.dia];
         renderRetomar(confirmando);
