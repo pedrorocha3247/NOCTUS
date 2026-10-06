@@ -532,7 +532,7 @@ function recalcularPoderes() {
  * cadastros pelo site ele é gerado pelo sistema (usuario@noctus.app) e não
  * serve pra nada na conferência.
  */
-async function carregarUsuarios() {
+async function carregarUsuarios(aviso) {
   const caixa = $("cfg-usuarios-lista");
   if (!caixa) return;
   caixa.innerHTML = `<p class="sub">Carregando usuários...</p>`;
@@ -548,20 +548,79 @@ async function carregarUsuarios() {
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const lista = await r.json();
     if (!Array.isArray(lista)) throw new Error("resposta inesperada");
-    const linhas = lista.map((u) => {
-      const adm = Array.isArray(u.roles) && u.roles.includes("admin");
-      const data = u.created_at ? new Date(u.created_at).toLocaleDateString("pt-BR") : "";
-      return `<tr><td>${escAnexo(u.display_name || u.username)}</td>
-        <td class="usuarios__user">${escAnexo(u.username)}</td>
-        <td><span class="usuarios__perfil${adm ? " usuarios__perfil--adm" : ""}">${adm ? "Administrador" : "Usuário"}</span></td>
-        <td>${escAnexo(data)}</td></tr>`;
-    }).join("");
-    caixa.innerHTML = `<table class="usuarios-tabela">
-        <thead><tr><th>Nome</th><th>Usuário</th><th>Perfil</th><th>Cadastro</th></tr></thead>
-        <tbody>${linhas}</tbody></table>
-      <p class="sub">${lista.length} ${lista.length === 1 ? "usuário cadastrado" : "usuários cadastrados"}.</p>`;
+    renderUsuarios(lista, aviso);
   } catch (e) {
     caixa.innerHTML = `<div class="alerta erro">Não consegui carregar os usuários (${escAnexo(e.message)}).</div>`;
+  }
+}
+
+/**
+ * Desenha a tabela. Excluir é em duas etapas, na própria linha ("Excluir" ->
+ * "Confirmar / Cancelar"), sem janela do navegador: apagar a conta também apaga
+ * os anexos da pessoa e não tem volta. A conta do administrador não tem botão.
+ */
+function renderUsuarios(lista, aviso, confirmando, excluindo) {
+  const caixa = $("cfg-usuarios-lista");
+  const linhas = lista.map((u) => {
+    const adm = Array.isArray(u.roles) && u.roles.includes("admin");
+    const data = u.created_at ? new Date(u.created_at).toLocaleDateString("pt-BR") : "";
+    let acao = "";
+    if (!adm) {
+      if (confirmando === u.username) {
+        acao = excluindo
+          ? `<span class="sub">Excluindo...</span>`
+          : `<span class="usuarios__confirma">Excluir ${escAnexo(u.display_name || u.username)}?
+              <button type="button" class="botao perigo pequeno" data-usr-acao="confirmar" data-usr="${escAnexo(u.username)}">Confirmar</button>
+              <button type="button" class="botao fantasma pequeno" data-usr-acao="cancelar">Cancelar</button></span>`;
+      } else {
+        acao = `<button type="button" class="botao fantasma pequeno usuarios__excluir" data-usr-acao="excluir"
+                  data-usr="${escAnexo(u.username)}" aria-label="Excluir usuário ${escAnexo(u.display_name || u.username)}">Excluir</button>`;
+      }
+    }
+    return `<tr><td>${escAnexo(u.display_name || u.username)}</td>
+      <td class="usuarios__user">${escAnexo(u.username)}</td>
+      <td><span class="usuarios__perfil${adm ? " usuarios__perfil--adm" : ""}">${adm ? "Administrador" : "Usuário"}</span></td>
+      <td>${escAnexo(data)}</td>
+      <td class="usuarios__acao">${acao}</td></tr>`;
+  }).join("");
+  caixa.innerHTML = `${aviso ? `<div class="alerta ${aviso.erro ? "erro" : "ok"}">${escAnexo(aviso.texto)}</div>` : ""}
+    <table class="usuarios-tabela">
+      <thead><tr><th>Nome</th><th>Usuário</th><th>Perfil</th><th>Cadastro</th><th></th></tr></thead>
+      <tbody>${linhas}</tbody></table>
+    <p class="sub">${lista.length} ${lista.length === 1 ? "usuário cadastrado" : "usuários cadastrados"}.</p>`;
+  caixa.onclick = async (ev) => {
+    const b = ev.target.closest("[data-usr-acao]");
+    if (!b) return;
+    const a = b.dataset.usrAcao, usr = b.dataset.usr;
+    if (a === "excluir") return renderUsuarios(lista, null, usr);
+    if (a === "cancelar") return renderUsuarios(lista);
+    if (a === "confirmar") {
+      renderUsuarios(lista, null, usr, true);
+      const res = await excluirUsuario(usr);
+      return carregarUsuarios(res);
+    }
+  };
+}
+
+/**
+ * Pede ao servidor (função noctus-admin-usuarios) para excluir o usuário. Não dá
+ * pra fazer daqui: apagar a conta de acesso e os arquivos exige a chave de
+ * serviço, que nunca fica no navegador. O servidor confere de novo que quem
+ * pede é o administrador e recusa excluir a conta do próprio administrador.
+ */
+async function excluirUsuario(username) {
+  try {
+    const r = await fetch(`${SB_URL}/functions/v1/noctus-admin-usuarios`, {
+      method: "POST",
+      headers: { apikey: SB_KEY, Authorization: `Bearer ${sessaoAtual().accessToken}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ acao: "excluir", username }),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || !j.ok) return { erro: true, texto: j.error || `Não foi possível excluir (HTTP ${r.status}).` };
+    const n = j.anexosRemovidos || 0;
+    return { texto: `Usuário excluído${n ? `, com ${n} ${n === 1 ? "anexo" : "anexos"}` : ""}.` };
+  } catch {
+    return { erro: true, texto: "Não foi possível excluir. Verifique a conexão e tente de novo." };
   }
 }
 
@@ -836,13 +895,11 @@ function renderRetomar(confirmando) {
       </span>
     </div>`;
 
-  const nOcultas = ocultos.reduce((n, d) => n + d.lotes.length, 0);
   const rodapeAntigos = !ocultos.length ? "" : `
     <div class="antigos">
       <button class="linkbtn" data-acao="alternar-antigos">${veAntigos
         ? `Ocultar dias anteriores a ${DIAS_VISIVEIS} dias`
-        : `Mostrar ${ocultos.length} ${ocultos.length === 1 ? "dia anterior" : "dias anteriores"}
-           (${nOcultas} ${nOcultas === 1 ? "conferência" : "conferências"}, com mais de ${DIAS_VISIVEIS} dias)`}</button>
+        : `Mostrar ${ocultos.length} ${ocultos.length === 1 ? "dia anterior" : "dias anteriores"}`}</button>
     </div>`;
 
   caixa.innerHTML =
