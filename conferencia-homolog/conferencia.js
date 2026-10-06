@@ -583,12 +583,14 @@ function renderUsuarios(lista, aviso, confirmando, excluindo) {
       <td>${escAnexo(data)}</td>
       <td class="usuarios__acao">${acao}</td></tr>`;
   }).join("");
-  caixa.innerHTML = `${aviso ? `<div class="alerta ${aviso.erro ? "erro" : "ok"}">${escAnexo(aviso.texto)}</div>` : ""}
+  caixa.innerHTML = `${aviso ? `<div class="alerta usuarios__aviso ${aviso.erro ? "erro" : "ok"}" role="status">${escAnexo(aviso.texto)}
+      <button type="button" class="alerta__x" data-usr-aviso-x title="Dispensar" aria-label="Dispensar mensagem">✕</button></div>` : ""}
     <table class="usuarios-tabela">
       <thead><tr><th>Nome</th><th>Usuário</th><th>Perfil</th><th>Cadastro</th><th></th></tr></thead>
       <tbody>${linhas}</tbody></table>
     <p class="sub">${lista.length} ${lista.length === 1 ? "usuário cadastrado" : "usuários cadastrados"}.</p>`;
   caixa.onclick = async (ev) => {
+    if (ev.target.closest("[data-usr-aviso-x]")) { caixa.querySelector(".usuarios__aviso")?.remove(); return; }
     const b = ev.target.closest("[data-usr-acao]");
     if (!b) return;
     const a = b.dataset.usrAcao, usr = b.dataset.usr;
