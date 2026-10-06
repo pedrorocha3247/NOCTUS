@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Controle Bancário — NOCTUS</title>
-<meta name="description" content="Calendário de pagamentos, contas, CNPJs e conciliação diária, a partir da planilha Financeiro.">
+<meta name="description" content="Pagamentos programados, contas bancárias e fechamento do dia, a partir da planilha Financeiro.">
 <meta name="robots" content="noindex">
 <link rel="icon" type="image/svg+xml" href="../favicon.svg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -15,26 +15,21 @@
 <body>
 
 <header class="topo">
-  <h1>Controle Bancário <span>· NOCTUS</span> <span class="selo">homologação</span></h1>
-  <nav>
-    <a class="voltar" href="../#/">Voltar</a>
-  </nav>
+  <h1>Controle Bancário <span class="selo">homologação</span></h1>
+  <a class="voltar" href="../#/">← Voltar</a>
 </header>
 
-<div class="abas" role="tablist" id="abas" aria-label="Seções do Controle Bancário">
-  <button class="aba" role="tab" data-aba="painel">Painel</button>
+<nav class="abas" id="abas" role="tablist" aria-label="Seções">
+  <button class="aba" role="tab" data-aba="hoje">Hoje</button>
   <button class="aba" role="tab" data-aba="calendario">Calendário</button>
-  <button class="aba" role="tab" data-aba="contas">Contas e CNPJs</button>
-  <button class="aba" role="tab" data-aba="dia">Pagamentos do dia</button>
-  <button class="aba" role="tab" data-aba="qualidade">Qualidade dos dados <span class="n oculto" id="n-qualidade"></span></button>
-  <button class="aba" role="tab" data-aba="importar">Importar planilha</button>
-</div>
+  <button class="aba" role="tab" data-aba="contas">Contas</button>
+  <button class="aba" role="tab" data-aba="fechamento">Fechamento do dia</button>
+  <button class="aba" role="tab" data-aba="planilha">Planilha <span class="ponto-alerta oculto" id="n-planilha"></span></button>
+</nav>
 
-<main id="app" aria-live="polite">
-  <div class="cartao"><p class="sub">Carregando…</p></div>
-</main>
+<main id="app" aria-live="polite"><p class="sub">Carregando…</p></main>
 
+<input type="file" id="arquivo-planilha" accept=".xlsx,.xlsm,.xls" hidden>
 <script type="module" src="./controle-bancario.js"></script>
-<noscript><main><div class="cartao">Este módulo precisa de JavaScript.</div></main></noscript>
 </body>
 </html>
