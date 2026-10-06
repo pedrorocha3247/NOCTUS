@@ -434,3 +434,5 @@ kbd{background:var(--color-surface-raised);border:1px solid var(--color-border);
 .usuarios__perfil{display:inline-block;padding:.12rem .55rem;border-radius:999px;font-size:.72rem;
   font-weight:600;border:1px solid var(--color-border);color:var(--color-text-secondary)}
 .usuarios__perfil--adm{border-color:var(--color-green);background:var(--color-green-dim);color:var(--color-green-hover)}
+/* ocultação de dias antigos na lista da tela inicial */
+.antigos{margin-top:.6rem;padding-top:.6rem;border-top:1px dashed var(--color-border)}
