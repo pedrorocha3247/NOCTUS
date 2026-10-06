@@ -430,9 +430,14 @@ kbd{background:var(--color-surface-raised);border:1px solid var(--color-border);
   text-align:left;padding:.4rem .7rem;border-bottom:1px solid var(--color-border)}
 .usuarios-tabela td{padding:.6rem .7rem;border-bottom:1px solid var(--color-border);vertical-align:middle}
 .usuarios-tabela tbody tr:last-child td{border-bottom:0}
-.usuarios__user{color:var(--color-text-secondary)}
+.usuarios__user{color:var(--color-text-secondary);text-transform:capitalize}
 .usuarios__perfil{display:inline-block;padding:.12rem .55rem;border-radius:999px;font-size:.72rem;
   font-weight:600;border:1px solid var(--color-border);color:var(--color-text-secondary)}
 .usuarios__perfil--adm{border-color:var(--color-green);background:var(--color-green-dim);color:var(--color-green-hover)}
 /* ocultação de dias antigos na lista da tela inicial */
 .antigos{margin-top:.6rem;padding-top:.6rem;border-top:1px dashed var(--color-border)}
+/* exclusão de usuário (Configurações, só admin) */
+.usuarios__acao{text-align:right;white-space:nowrap}
+.usuarios__confirma{display:inline-flex;align-items:center;gap:.4rem;flex-wrap:wrap;justify-content:flex-end;font-size:.8rem}
+.botao.pequeno{padding:.25rem .6rem;font-size:.75rem}
+.usuarios__excluir:hover{border-color:var(--color-error-border);color:var(--color-error)}
