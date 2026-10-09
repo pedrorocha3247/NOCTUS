@@ -373,11 +373,14 @@ function lotesSalvos() {
 
 function carregar(chave, destino) {
   const v = JSON.parse(localStorage.getItem(chave));
+  ultimoAberto = null; voltarAoCartao = false;   // empresa nova: Resumo abre no topo
   estado.dados = { meta: v.meta, validacao: v.validacao, solicitacoes: v.solicitacoes };
   estado.pareceres = v.pareceres || {};
   estado.removidas = v.removidas || [];
-  estado.itens = ordenar(v.solicitacoes, estado.pareceres);
-  estado.i = Math.min(v.i || 0, estado.itens.length - 1);
+  estado.itens = ordenar(v.solicitacoes);
+  // retoma na primeira pendente; com tudo conferido, volta onde estava
+  const pend = primeiroPendente();
+  estado.i = pend >= 0 ? pend : Math.min(v.i || 0, estado.itens.length - 1);
   recalcularPoderes();   // o OTN pode ter mudado desde que este lote foi salvo
   irPara("revisao");
   render();
@@ -388,21 +391,28 @@ function carregar(chave, destino) {
 
 /* ------------------------------------------------------------------- utilidades */
 /**
- * Ordena pela forma de pagamento e valor (ordem "natural" da conferência) e,
- * quando `pareceres` é informado, faz um segundo passe estável que empurra as
- * solicitações ainda sem parecer para depois das já conferidas — sem misturar
- * uma coisa com a outra. Sort é estável, então esse segundo passe preserva a
- * ordem natural dentro de cada grupo (conferidas / pendentes).
+ * Ordem da conferência: forma de pagamento (ORDEM) e, dentro de cada forma,
+ * S.N do menor para o maior.
+ *
+ * Pedido do Rocha em 09/10/2026: dentro de uma mesma forma (ex.: TED com as
+ * S.N 01, 02 e 03) as solicitações apareciam fora de ordem (02, 01, 03). Duas
+ * causas: (1) o critério dentro da forma era o VALOR, do maior para o menor,
+ * e (2) um segundo passe empurrava as já conferidas para a frente das
+ * pendentes, embaralhando de novo a sequência. Agora a ordem é fixa e só
+ * depende do relatório; o "continuar de onde parou" passou a ser feito
+ * posicionando na primeira pendente (ver primeiroPendente), não reordenando.
+ *
+ * S.N comparada como número (localeCompare numérico), para "9" vir antes de
+ * "10" mesmo que algum relatório traga a S.N sem zeros à esquerda.
  */
-const ordenar = (ss, pareceres) => {
-  const base = [...ss].sort((a, b) => {
-    const ta = ORDEM.indexOf(a.tipo), tb = ORDEM.indexOf(b.tipo);
-    return (ta < 0 ? 99 : ta) - (tb < 0 ? 99 : tb) || (b.valor || 0) - (a.valor || 0);
-  });
-  if (!pareceres) return base;
-  const pendente = (s) => (pareceres[s.sn]?.status ? 0 : 1);
-  return base.sort((a, b) => pendente(a) - pendente(b));
-};
+const compararSn = (a, b) =>
+  String(a.sn ?? "").localeCompare(String(b.sn ?? ""), "pt-BR", { numeric: true });
+const ordenar = (ss) => [...ss].sort((a, b) => {
+  const ta = ORDEM.indexOf(a.tipo), tb = ORDEM.indexOf(b.tipo);
+  return (ta < 0 ? 99 : ta) - (tb < 0 ? 99 : tb) || compararSn(a, b);
+});
+/** Índice da primeira solicitação ainda sem status, na ordem acima (-1 se todas conferidas). */
+const primeiroPendente = () => estado.itens.findIndex((s) => !estado.pareceres[s.sn]?.status);
 
 const feitos = () => estado.itens.filter((s) => estado.pareceres[s.sn]?.status).length;
 
@@ -1150,9 +1160,10 @@ async function processar(arquivo) {
       estado.removidas = [];
       estado.mesclagem = null;
     }
-    // com os pareceres já mesclados: os ainda pendentes ficam depois dos já
-    // conferidos, sem se misturar entre eles.
-    estado.itens = ordenar(dados.solicitacoes, estado.pareceres);
+    // ordem fixa (forma de pagamento + S.N); com os pareceres já mesclados,
+    // abre na primeira solicitação ainda pendente.
+    estado.itens = ordenar(dados.solicitacoes);
+    estado.i = Math.max(0, primeiroPendente());
     salvar();
     irPara("revisao");
     render();
@@ -1377,6 +1388,17 @@ let filtro = null;         // forma de pagamento (ou apontadas)
 let filtroStatus = null;   // status do parecer, combinado com o filtro acima
 let busca = "";            // texto livre buscado na observação/destinação
 let ultimoAberto = null;   // cartão de onde o conferidor foi aberto
+/**
+ * Pedido do Rocha em 07/10/2026: ao entrar numa empresa, o Resumo abria lá
+ * embaixo, no cartão da última solicitação aberta, e com muitas solicitações
+ * era preciso rolar tudo de volta até o topo. A causa: `ultimoAberto` nunca
+ * era limpo, então QUALQUER redesenho do Resumo (entrar na empresa de novo,
+ * trocar filtro, digitar na busca) pulava para aquele cartão. Agora o pulo é
+ * de uso único: só vale na volta imediata da solicitação aberta pelo próprio
+ * Resumo (para continuar de onde parou). Em todos os outros casos o Resumo
+ * abre no topo (irPara já faz window.scrollTo(0, 0)).
+ */
+let voltarAoCartao = false;
 
 function mostrarResumo() {
   irPara("resumo");
@@ -1501,10 +1523,11 @@ function mostrarResumo() {
       </div>`;
     }).join("");
 
-  if (ultimoAberto) {
+  if (voltarAoCartao && ultimoAberto) {
     const alvo = $("res-corpo").querySelector(`[data-sn="${CSS.escape(ultimoAberto)}"]`);
     if (alvo && !$("res-lista").hidden) alvo.scrollIntoView({ block: "center" });
   }
+  voltarAoCartao = false;
 
   // Pedido do Rocha em 25/09/2026: solicitações que sumiram de um relatório
   // mais novo mas já tinham parecer (ver mesclar()/estado.removidas) ficam
@@ -1536,6 +1559,7 @@ function abrirSolicitacao(sn) {
   const i = estado.itens.findIndex((s) => s.sn === sn);
   if (i < 0) return;
   ultimoAberto = sn;
+  voltarAoCartao = true;
   estado.i = i;
   irPara("revisao");
   render();
