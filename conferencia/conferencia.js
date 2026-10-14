@@ -321,6 +321,32 @@ function migrarChaves() {
         localStorage.removeItem(chave);
       }
     }
+    // devolver órfãs: pareceres que caíram em "sem-login" porque a sessão
+    // venceu no meio da conferência (ver escopoUsuario). Volta tudo para o
+    // usuário atual: se ele não tem esse lote, o lote inteiro passa a ser
+    // dele; se tem, entram só os pareceres que faltam no lote dele (o que ele
+    // já tem não é sobrescrito). A chave órfã só é apagada depois de gravar.
+    const meu = escopoUsuario();
+    if (meu !== "sem-login") {
+      for (const chave of Object.keys(localStorage)) {
+        const m = chave.match(new RegExp(`^${CHAVE}\\.sem-login\\.(\\d{2}-\\d{2}-\\d{4})\\.e(.+)$`));
+        if (!m) continue;
+        const destino = `${CHAVE}.${meu}.${m[1]}.e${m[2]}`;
+        const orfa = JSON.parse(localStorage.getItem(chave));
+        const atual = localStorage.getItem(destino);
+        if (!atual) {
+          localStorage.setItem(destino, localStorage.getItem(chave));
+        } else {
+          const v = JSON.parse(atual);
+          v.pareceres = v.pareceres || {};
+          const tem = (p) => p && (p.status || p.parecer);
+          for (const [sn, p] of Object.entries(orfa.pareceres || {}))
+            if (tem(p) && !tem(v.pareceres[sn])) v.pareceres[sn] = p;
+          localStorage.setItem(destino, JSON.stringify(v));
+        }
+        localStorage.removeItem(chave);
+      }
+    }
     // lotes ".etodas": Excel com várias empresas juntas numa ÚNICA
     // conferência, do jeito que o sistema salvava antes de 23/09/2026 —
     // separa em uma conferência por empresa (mesma regra de
@@ -1802,9 +1828,31 @@ async function adminConfirmadoNoServidor() {
  * sessão, cai num escopo fixo — mesmo comportamento de antes do cadastro existir.
  */
 function escopoUsuario() {
-  const u = usuarioAtual();
+  if (escopoDaPagina) return escopoDaPagina;
+  const u = usuarioAtual() || usuarioGravado();
   const base = String(u?.username || u?.id || "sem-login").trim().toLowerCase();
-  return base.replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) || "sem-login";
+  const escopo = base.replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) || "sem-login";
+  if (escopo !== "sem-login") escopoDaPagina = escopo;
+  return escopo;
+}
+/**
+ * Pedido do Rocha em 14/10/2026 ("estou conferindo e não está salvando").
+ * Causa: o login do NOCTUS vale 1 hora. O escopo do usuário era recalculado
+ * a CADA gravação a partir da sessão VÁLIDA; quando a hora passava no meio da
+ * conferência, sessaoAtual() voltava null, o escopo virava "sem-login" e os
+ * pareceres seguintes iam para outra chave (…conferencia.sem-login.…). Ao
+ * entrar de novo, a lista mostrava a chave do usuário, parada no ponto em que
+ * a sessão venceu — parecia que nada tinha sido salvo.
+ * Correção: o escopo (1) usa o usuário gravado na sessão mesmo com o token
+ * vencido — o escopo só separa o progresso de cada pessoa neste navegador,
+ * não é autorização de nada — e (2) fica fixo durante a página, uma vez
+ * conhecido. O que já tinha caído em "sem-login" é devolvido ao usuário por
+ * migrarChaves() (ver "devolver órfãs").
+ */
+let escopoDaPagina = null;
+function usuarioGravado() {
+  try { return JSON.parse(localStorage.getItem(CHAVE_SESSAO) || "null")?.user || null; }
+  catch { return null; }
 }
 
 const escAnexo = (t) =>
