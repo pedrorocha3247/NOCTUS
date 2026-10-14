@@ -71,6 +71,10 @@ export const CONTAS_EMPRESA = [
   { empresa: "Momentum", aba: "MM", codigo: "15", banco: "Santander - 353", agencia: "2146", conta: "13000008-3", cnpj: "47.686.555/0001-00" },
   { empresa: "Momentum", aba: "MM", codigo: "15", banco: "Itaú - 341", agencia: "0262", conta: "62222-8", cnpj: "47.686.555/0001-00" },
   { empresa: "Instituto", aba: "IRM", codigo: "90", banco: "Itaú - 341", agencia: "0262", conta: "58703-3", cnpj: "05.161.107/0001-35" },
+  // Incluída a pedido do Rocha em 14/10/2026 (apareceu no relatório como "BANCO DO BRASIL S/A
+  // Ag. 6752 - C/C 13341-8", sem empresa identificada). CNPJ repetido da outra conta do IRM,
+  // como referência — o campo não entra na busca; confirmar se a conta for de uma filial.
+  { empresa: "Instituto", aba: "IRM", codigo: "90", banco: "Banco do Brasil - 01", agencia: "6752", conta: "13341-8", cnpj: "05.161.107/0001-35" },
   { empresa: "M5", aba: "M5", codigo: "70", banco: "Itaú - 341", agencia: "7307", conta: "14982-8", cnpj: "25.247.689/0001-84" },
   { empresa: "Realiza", aba: "REALIZA", codigo: "28", banco: "Itaú - 341", agencia: "7307", conta: "46780-8", cnpj: "67.648.402/0001-78" },
   { empresa: "Praia Verde", aba: "PV", codigo: "13", banco: "J17 - 451", agencia: "0001", conta: "00042-1", cnpj: "68.199.298/0001-44" },
