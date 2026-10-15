@@ -27,10 +27,12 @@
     <div id="aviso-otn"></div>
     <h2>Novo relatório</h2>
     <div class="solta" id="solta">
-      <strong>Clique para escolher o relatório</strong>
-      <span>PDF ou Excel (.xlsx) — ou arraste o arquivo para cá</span>
+      <strong>Clique para escolher o relatório de débito (Excel)</strong>
+      <span>ou arraste o arquivo para cá</span>
+      <!-- PDF desligado em 15/10/2026 (pedido do Rocha): só Excel por enquanto. Para religar,
+           volte "application/pdf,.pdf," ao accept abaixo e ACEITA_PDF = true em conferencia.js. -->
       <input type="file" id="arquivo"
-             accept="application/pdf,.pdf,.xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden>
+             accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden>
     </div>
     <div id="upload-msg"></div>
     <div id="retomar" class="oculto" style="margin-top:1rem"></div>
