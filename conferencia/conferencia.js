@@ -941,7 +941,7 @@ function renderRetomar(confirmando) {
     </div>`;
 
   caixa.innerHTML =
-    `<p class="sub" style="margin-bottom:.6rem">Conferências realizadas:</p>` +
+    `<p class="sub" style="margin-bottom:.6rem">Conferências iniciadas:</p>` +
     (visiveis.length ? "" : `<p class="sub">Nenhuma conferência nos últimos ${DIAS_VISIVEIS} dias.</p>`) +
     visiveis.map((d) => {
       const aberto = diasAbertos[d.data];
