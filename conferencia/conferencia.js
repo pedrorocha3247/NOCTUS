@@ -927,7 +927,7 @@ function renderRetomar(confirmando) {
       <span class="lote__acoes">
         <button class="botao fantasma" data-acao="resumo" data-chave="${l.chave}"
                 title="Abrir o relatório de pareceres deste dia">Ver resumo</button>
-        <button class="botao fantasma" data-acao="retomar" data-chave="${l.chave}">Retomar</button>
+        <button class="botao fantasma" data-acao="retomar" data-chave="${l.chave}">Conferir</button>
         <button class="lote__x" data-acao="perguntar" data-chave="${l.chave}"
                 title="Remover esta conferência" aria-label="Remover esta conferência">✕</button>
       </span>
@@ -941,7 +941,7 @@ function renderRetomar(confirmando) {
     </div>`;
 
   caixa.innerHTML =
-    `<p class="sub" style="margin-bottom:.6rem">Conferências em andamento neste navegador:</p>` +
+    `<p class="sub" style="margin-bottom:.6rem">Conferências realizadas:</p>` +
     (visiveis.length ? "" : `<p class="sub">Nenhuma conferência nos últimos ${DIAS_VISIVEIS} dias.</p>`) +
     visiveis.map((d) => {
       const aberto = diasAbertos[d.data];
@@ -1140,13 +1140,24 @@ function processarMultiEmpresa(dados) {
  * traz várias empresas juntas, que se separa em várias conferências
  * (processarMultiEmpresa) em vez de virar uma só.
  */
+/**
+ * Pedido do Rocha em 15/10/2026: aceitar só o relatório em Excel. A leitura
+ * de PDF (parseRelatorio, em parser.js) continua inteira no código, só fica
+ * desligada aqui — para voltar a aceitar PDF basta ACEITA_PDF = true e
+ * devolver "application/pdf,.pdf," ao accept do <input id="arquivo"> no
+ * index.html.
+ */
+const ACEITA_PDF = false;
+
 async function processar(arquivo) {
   const msg = $("upload-msg");
   const nome = arquivo.name.toLowerCase();
-  const ehPdf = nome.endsWith(".pdf");
+  const ehPdf = ACEITA_PDF && nome.endsWith(".pdf");
   const ehExcel = nome.endsWith(".xlsx") || nome.endsWith(".xls");
   if (!ehPdf && !ehExcel) {
-    msg.innerHTML = `<div class="alerta erro">Envie o relatório em PDF ou em Excel (.xlsx).</div>`;
+    msg.innerHTML = nome.endsWith(".pdf")
+      ? `<div class="alerta erro">No momento só o relatório em Excel (.xlsx) é aceito. Exporte o relatório de débito em Excel e envie de novo.</div>`
+      : `<div class="alerta erro">Envie o relatório de débito em Excel (.xlsx).</div>`;
     return;
   }
   msg.innerHTML = `<div class="alerta">Lendo o relatório…</div>`;
