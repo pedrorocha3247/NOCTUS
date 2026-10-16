@@ -42,6 +42,13 @@ const SB_URL = "https://wyyqjlwzphlhnplmirlg.supabase.co";
 const SB_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind5eXFqbHd6cGhsaG5wbG1pcmxnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQyMTU0MDcsImV4cCI6MjA5OTc5MTQwN30.8TEY_BZAm7P9vwuU0Eh5jzw6rgzcPOpTXk_gBU5FQJc";
 const CHAVE_SESSAO = "sipep.session";
 
+// Login novo (16/10/2026): quem ainda não cadastrou o e-mail de recuperação
+// vai para a página que pede o e-mail uma única vez, mesmo entrando direto
+// por este endereço. Só sessões do login novo têm "precisaEmail".
+try {
+  if (JSON.parse(localStorage.getItem(CHAVE_SESSAO) || "null")?.precisaEmail) location.replace("../conta/#email");
+} catch {}
+
 const $ = (id) => document.getElementById(id);
 const moeda = (v) =>
   (v ?? 0).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
