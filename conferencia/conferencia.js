@@ -331,7 +331,7 @@ function migrarChaves() {
     // conferências salvas antes do cadastro por usuário: passam a pertencer ao admin
     // (único usuário que existia antes) na primeira vez que ele abrir o módulo depois
     // desta atualização. Um usuário novo cadastrado nunca herda essas conferências.
-    if (ehAdmin()) {
+    if (ehAdminPrincipal()) {
       for (const chave of Object.keys(localStorage)) {
         const m = chave.match(new RegExp(`^${CHAVE}\\.(\\d{2}-\\d{2}-\\d{4})\\.e(.+)$`));
         if (!m) continue;
@@ -512,8 +512,9 @@ function abrirConfig() {
   if (telaAtual !== "config") telaAntesConfig = telaAtual;
   // Desde 16/10/2026 todo usuário abre Configurações (para escolher o tema),
   // mas OTN e lista de usuários continuam só do administrador.
-  const admin = ehAdmin();
+  const admin = ehAdmin(), principal = ehAdminPrincipal();
   document.querySelectorAll("#tela-config .so-admin").forEach((el) => el.classList.toggle("oculto", !admin));
+  document.querySelectorAll("#tela-config .so-principal").forEach((el) => el.classList.toggle("oculto", !principal));
   renderAparencia();
   $("cfg-msg").innerHTML = "";
   if (admin) {
@@ -522,8 +523,8 @@ function abrirConfig() {
     // e o valor mostrado é o vigente nele — assim basta corrigir o número.
     carregarMesNaConfig(mesAtual());
     fecharPopsOtn();
-    carregarUsuarios();
   }
+  if (principal) carregarUsuarios();
   irPara("config");
   if (configAbertaViaHome) {
     const a = $("voltar-topo");
@@ -619,29 +620,53 @@ async function carregarUsuarios(aviso) {
 /**
  * Desenha a tabela. Excluir é em duas etapas, na própria linha ("Excluir" ->
  * "Confirmar / Cancelar"), sem janela do navegador: apagar a conta também apaga
- * os anexos da pessoa e não tem volta. A conta do administrador não tem botão.
+ * os anexos da pessoa e não tem volta.
+ *
+ * Pedido do Rocha em 16/10/2026: clicar no perfil (Administrador/Usuário) de
+ * alguém troca o perfil, também com confirmação na própria linha. Administrador
+ * pode mexer no OTN; gerenciar usuários continua só com o principal (o Rocha).
+ * A conta do principal não tem botão: não muda de perfil nem é excluída. Um
+ * administrador também não é excluído direto — volta a Usuário antes.
+ * `confirmando` é o usuário pedindo confirmação de exclusão, ou "perfil:<usuário>"
+ * quando é troca de perfil.
  */
-function renderUsuarios(lista, aviso, confirmando, excluindo) {
+function renderUsuarios(lista, aviso, confirmando, ocupado) {
   const caixa = $("cfg-usuarios-lista");
   const linhas = lista.map((u) => {
     const adm = Array.isArray(u.roles) && u.roles.includes("admin");
+    const principal = String(u.username || "").trim().toLowerCase() === ADMIN_USUARIO;
+    const nome = escAnexo(u.display_name || u.username);
+    const usr = escAnexo(u.username);
     const data = u.created_at ? new Date(u.created_at).toLocaleDateString("pt-BR") : "";
+    const rotulo = adm ? "Administrador" : "Usuário";
+    const novo = adm ? "Usuário" : "Administrador";
     let acao = "";
-    if (!adm) {
+    if (confirmando === "perfil:" + u.username) {
+      acao = ocupado
+        ? `<span class="sub">Alterando...</span>`
+        : `<span class="usuarios__confirma">Tornar ${nome} ${novo}?
+            <button type="button" class="botao primario pequeno" data-usr-acao="confirmar-perfil" data-usr="${usr}" data-perfil="${adm ? "user" : "admin"}">Confirmar</button>
+            <button type="button" class="botao fantasma pequeno" data-usr-acao="cancelar">Cancelar</button></span>`;
+    } else if (!adm) {
       if (confirmando === u.username) {
-        acao = excluindo
+        acao = ocupado
           ? `<span class="sub">Excluindo...</span>`
-          : `<span class="usuarios__confirma">Excluir ${escAnexo(u.display_name || u.username)}?
-              <button type="button" class="botao perigo pequeno" data-usr-acao="confirmar" data-usr="${escAnexo(u.username)}">Confirmar</button>
+          : `<span class="usuarios__confirma">Excluir ${nome}?
+              <button type="button" class="botao perigo pequeno" data-usr-acao="confirmar" data-usr="${usr}">Confirmar</button>
               <button type="button" class="botao fantasma pequeno" data-usr-acao="cancelar">Cancelar</button></span>`;
       } else {
         acao = `<button type="button" class="botao fantasma pequeno usuarios__excluir" data-usr-acao="excluir"
-                  data-usr="${escAnexo(u.username)}" aria-label="Excluir usuário ${escAnexo(u.display_name || u.username)}">Excluir</button>`;
+                  data-usr="${usr}" aria-label="Excluir usuário ${nome}">Excluir</button>`;
       }
     }
-    return `<tr><td>${escAnexo(u.display_name || u.username)}</td>
-      <td class="usuarios__user">${escAnexo(u.username)}</td>
-      <td><span class="usuarios__perfil${adm ? " usuarios__perfil--adm" : ""}">${adm ? "Administrador" : "Usuário"}</span></td>
+    const perfil = principal
+      ? `<span class="usuarios__perfil usuarios__perfil--adm" title="Administrador principal: não pode ser alterado">Administrador</span>`
+      : `<button type="button" class="usuarios__perfil usuarios__perfil--botao${adm ? " usuarios__perfil--adm" : ""}"
+           data-usr-acao="perfil" data-usr="${usr}" title="Clique para tornar ${novo}"
+           aria-label="Perfil de ${nome}: ${rotulo}. Clique para tornar ${novo}">${rotulo}<span aria-hidden="true" class="usuarios__perfil-seta">⇄</span></button>`;
+    return `<tr><td>${nome}</td>
+      <td class="usuarios__user">${usr}</td>
+      <td>${perfil}</td>
       <td>${escAnexo(data)}</td>
       <td class="usuarios__acao">${acao}</td></tr>`;
   }).join("");
@@ -650,20 +675,43 @@ function renderUsuarios(lista, aviso, confirmando, excluindo) {
     <table class="usuarios-tabela">
       <thead><tr><th>Nome</th><th>Usuário</th><th>Perfil</th><th>Cadastro</th><th></th></tr></thead>
       <tbody>${linhas}</tbody></table>
-    <p class="sub">${lista.length} ${lista.length === 1 ? "usuário cadastrado" : "usuários cadastrados"}.</p>`;
+    <p class="sub">${lista.length} ${lista.length === 1 ? "usuário cadastrado" : "usuários cadastrados"}.
+      Clique no perfil de alguém para alterá-lo.</p>`;
   caixa.onclick = async (ev) => {
     if (ev.target.closest("[data-usr-aviso-x]")) { caixa.querySelector(".usuarios__aviso")?.remove(); return; }
     const b = ev.target.closest("[data-usr-acao]");
     if (!b) return;
     const a = b.dataset.usrAcao, usr = b.dataset.usr;
     if (a === "excluir") return renderUsuarios(lista, null, usr);
+    if (a === "perfil") return renderUsuarios(lista, null, "perfil:" + usr);
     if (a === "cancelar") return renderUsuarios(lista);
     if (a === "confirmar") {
       renderUsuarios(lista, null, usr, true);
       const res = await excluirUsuario(usr);
       return carregarUsuarios(res);
     }
+    if (a === "confirmar-perfil") {
+      renderUsuarios(lista, null, "perfil:" + usr, true);
+      const res = await alterarPerfil(usr, b.dataset.perfil);
+      return carregarUsuarios(res);
+    }
   };
+}
+
+/** Pede ao servidor (noctus-admin-usuarios) a troca de perfil; ele confere de novo quem pede. */
+async function alterarPerfil(username, perfil) {
+  try {
+    const r = await fetch(`${SB_URL}/functions/v1/noctus-admin-usuarios`, {
+      method: "POST",
+      headers: { apikey: SB_KEY, Authorization: `Bearer ${sessaoAtual().accessToken}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ acao: "perfil", username, perfil }),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || !j.ok) return { erro: true, texto: j.error || `Não foi possível alterar o perfil (HTTP ${r.status}).` };
+    return { texto: `Perfil alterado para ${perfil === "admin" ? "Administrador" : "Usuário"}. Vale a partir do próximo login dessa pessoa.` };
+  } catch {
+    return { erro: true, texto: "Não foi possível alterar o perfil. Verifique a conexão e tente de novo." };
+  }
 }
 
 /**
@@ -1844,12 +1892,21 @@ function usuarioAtual() {
 const ADMIN_USUARIO = "pedro rocha";
 const ADMIN_EMAIL = "pedro.rocha@momentum.com.br";
 
-/** true só para o administrador: papel "admin" E a identidade do Rocha. */
-function ehAdmin() {
+/** Administrador PRINCIPAL: papel "admin" E a identidade do Rocha. Só ele
+ *  gerencia usuários (lista, perfil, exclusão). */
+function ehAdminPrincipal() {
   const u = usuarioAtual();
   if (!u || !Array.isArray(u.roles) || !u.roles.includes("admin")) return false;
   return [u.username, u.displayName, u.id]
     .some((v) => String(v || "").trim().toLowerCase() === ADMIN_USUARIO);
+}
+
+/** Qualquer administrador (o principal ou quem ele promoveu, desde
+ *  16/10/2026): mexe no OTN. O servidor confere de novo na hora de gravar
+ *  (função noctus_eh_admin nas regras da tabela config_noctus). */
+function ehAdmin() {
+  const u = usuarioAtual();
+  return !!u && Array.isArray(u.roles) && u.roles.includes("admin");
 }
 
 /**
