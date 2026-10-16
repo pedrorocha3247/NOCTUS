@@ -1,0 +1,64 @@
+/* Página de conta do NOCTUS: cadastro do e-mail (uma vez) e "Esqueci a senha".
+   O grosso do visual vem de ../app.css (mesmas classes da tela de login). */
+
+.conta__titulo {
+  margin: 0 0 .5rem;
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--color-text);
+  text-align: center;
+}
+
+.conta__texto {
+  margin: 0 0 1.25rem;
+  font-size: .88rem;
+  line-height: 1.55;
+  color: var(--color-text-secondary);
+  text-align: center;
+}
+
+.conta__texto strong { color: var(--color-text); font-weight: 600; }
+
+.conta__form { display: flex; flex-direction: column; gap: 1.1rem; }
+
+.conta__links {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-top: .9rem;
+}
+
+.conta__links--centro { justify-content: center; }
+
+/* No app.css o .linkbtn só vale dentro de .login__switch; aqui vale na página toda. */
+.linkbtn {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  font-size: .85rem;
+  color: var(--color-blue);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.linkbtn:hover { color: var(--color-blue-hover); }
+
+.linkbtn:disabled { color: var(--color-text-muted); cursor: default; text-decoration: none; }
+
+.ui-alert--sucesso {
+  background-color: var(--color-green-dim);
+  border: 1px solid var(--color-green);
+  color: var(--color-green-hover);
+  animation: fadeIn .3s ease;
+}
+
+/* Código de 6 dígitos: números grandes e espaçados, fáceis de conferir. */
+.conta__codigo .ui-field__input {
+  font-size: 1.35rem;
+  letter-spacing: .5em;
+  font-variant-numeric: tabular-nums;
+}
+
+a.ui-button { text-decoration: none; }
