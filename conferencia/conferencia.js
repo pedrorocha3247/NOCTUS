@@ -3154,21 +3154,32 @@ function statusSync(estadoNovo) {
  */
 const CHAVE_TEMA = "noctus.tema";
 const CHAVE_PREFS_PEND = "noctus.sync.prefs-pendente";
+/**
+ * Correção de 16/10/2026 (pedido do Rocha: "mudo para o claro, saio, entro de
+ * novo e volta para o escuro"). As preferências não tinham hora: quem lia por
+ * último ganhava. A versão do servidor (ainda "escuro") podia chegar DEPOIS da
+ * escolha feita na tela e desfazê-la — e aí era o "escuro" que subia de volta.
+ * Agora cada escolha leva a hora em que foi feita ("em"), e só a mais recente
+ * vale, venha do servidor ou deste navegador.
+ */
+const CHAVE_PREFS_EM = "noctus.prefs.em";
 const aplicarTema = (t) => { document.documentElement.dataset.tema = t === "claro" ? "claro" : "escuro"; };
 const lerPrefsLocais = () => ({
   tema: localStorage.getItem(CHAVE_TEMA) === "claro" ? "claro" : "escuro",
   avisoSalvoOculto: avisoOkOculto(),
+  em: Number(localStorage.getItem(CHAVE_PREFS_EM)) || 0,
 });
 function gravarPrefsLocais(p) {
   try {
     if (p.tema === "claro" || p.tema === "escuro") localStorage.setItem(CHAVE_TEMA, p.tema);
     if (typeof p.avisoSalvoOculto === "boolean") localStorage.setItem(CHAVE_OCULTAR_OK, p.avisoSalvoOculto ? "1" : "0");
+    if (p.em) localStorage.setItem(CHAVE_PREFS_EM, String(p.em));
   } catch { /* sem espaço */ }
   aplicarTema(lerPrefsLocais().tema);
 }
 /** Mudança feita pelo usuário: aplica na hora e põe na fila do servidor. */
 function mudarPrefs(p) {
-  gravarPrefsLocais(p);
+  gravarPrefsLocais({ ...p, em: Date.now() });
   try { localStorage.setItem(CHAVE_PREFS_PEND, "1"); } catch { /* sem espaço */ }
   agendarEnvio(200);
 }
@@ -3187,12 +3198,15 @@ async function sincronizarPrefs() {
     if (localStorage.getItem(CHAVE_PREFS_PEND) === "1") return enviarPendentes();
     const r = await servidor(`preferencias_noctus?select=prefs`);
     const [linha] = await r.json();
-    if (linha?.prefs) {
-      gravarPrefsLocais(linha.prefs);
+    // o usuário pode ter mudado algo enquanto a resposta vinha: a escolha dele manda
+    if (localStorage.getItem(CHAVE_PREFS_PEND) === "1") return enviarPendentes();
+    const local = lerPrefsLocais();
+    if (linha?.prefs && (Number(linha.prefs.em) || 0) >= local.em) {
+      gravarPrefsLocais(linha.prefs);   // a do servidor é a mais recente (ex.: mudou em outro computador)
       if (estadoSync) statusSync(estadoSync);
       if (telaAtual === "config") renderAparencia();
     } else {
-      await enviarPrefs();   // primeira vez deste usuário: o que está neste navegador vira o dele
+      await enviarPrefs();   // a deste navegador é mais recente (ou o servidor ainda não tem): sobe
     }
   } catch (e) { /* segue com o que está neste navegador */ }
 }
