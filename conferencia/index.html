@@ -9,6 +9,10 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script>
+  /* tema escolhido em Configurações > Aparência; aplicado antes de desenhar a página */
+  try { if (localStorage.getItem("noctus.tema") === "claro") document.documentElement.dataset.tema = "claro"; } catch (e) {}
+</script>
 <link rel="stylesheet" href="./conferencia.css">
 </head>
 <body>
@@ -179,10 +183,22 @@
     <div class="cartao">
       <h2>Configurações</h2>
       <p class="sub" style="margin-top:-.6rem;margin-bottom:1.2rem">
-        Ajustes deste módulo. Ficam guardados neste navegador.
+        Ficam guardadas no servidor e valem em qualquer computador em que você entrar.
       </p>
 
-      <div class="config-item config-item--coluna">
+      <div class="config-item config-item--coluna" id="cfg-aparencia">
+        <div class="config-item__texto">
+          <strong>Aparência</strong>
+          <span class="sub">Tema do NOCTUS inteiro, só para o seu usuário.</span>
+        </div>
+        <div class="tema-opcoes" role="radiogroup" aria-label="Tema">
+          <button type="button" class="tema-opcao" role="radio" data-tema="escuro" aria-checked="true"><span class="tema-opcao__amostra tema-opcao__amostra--escuro" aria-hidden="true"></span>Escuro</button>
+          <button type="button" class="tema-opcao" role="radio" data-tema="claro" aria-checked="false"><span class="tema-opcao__amostra tema-opcao__amostra--claro" aria-hidden="true"></span>Claro</button>
+        </div>
+        <label class="cfg-check"><input type="checkbox" id="cfg-aviso-salvo" checked> Mostrar o aviso "Tudo salvo no servidor" no canto da tela</label>
+      </div>
+
+      <div class="config-item config-item--coluna so-admin">
         <div class="config-item__texto">
           <strong>Valor do OTN</strong>
           <span class="sub">Converte para reais os limites de poder, que a Relação de
@@ -209,7 +225,7 @@
         </div>
       </div>
 
-      <div class="config-item config-item--coluna">
+      <div class="config-item config-item--coluna so-admin">
         <div class="config-item__texto">
           <strong>Consultar mês</strong>
           <span class="sub">Escolha um mês para ver o OTN daquela data. Ele aparece nos
@@ -226,7 +242,7 @@
         </div>
       </div>
 
-      <div class="config-item config-item--coluna">
+      <div class="config-item config-item--coluna so-admin">
         <div class="config-item__texto">
           <strong>Usuários cadastrados</strong>
         </div>
@@ -239,7 +255,7 @@
       <div id="cfg-msg"></div>
 
       <div class="acoes">
-        <div>
+        <div class="so-admin">
           <button type="button" class="botao fantasma" id="cfg-padrao">Restaurar padrão</button>
         </div>
         <div>
