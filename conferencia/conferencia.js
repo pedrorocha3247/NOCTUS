@@ -1,16 +1,19 @@
 /**
  * Módulo de Conferência de Pagamentos — NOCTUS
  *
- * Roda inteiro no navegador: o PDF é lido localmente, o progresso fica no
- * localStorage e a planilha é gerada no cliente. Nenhum dado sai da máquina.
+ * O relatório é lido e a planilha é gerada no próprio navegador. O progresso
+ * (pareceres) fica no navegador E no servidor (Supabase), para aparecer em
+ * qualquer computador em que o usuário entrar — ver a seção "servidor".
  */
-import * as pdfjsLib from "./vendor/pdf.min.mjs";
+// "../conferencia/vendor": a homologação (conferencia-homolog/) não tem a pasta
+// vendor própria; assim as duas pastas usam as mesmas bibliotecas.
+import * as pdfjsLib from "../conferencia/vendor/pdf.min.mjs";
 import { parseRelatorio, parseRelatorioExcel } from "./parser.js";
 import { verificarPoder } from "./poderes.js";
 import { rotuloEmpresa } from "./contas.js";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc =
-  new URL("./vendor/pdf.worker.min.mjs", import.meta.url).href;
+  new URL("../conferencia/vendor/pdf.worker.min.mjs", import.meta.url).href;
 
 const ORDEM = ["TRANSFERÊNCIA", "TED", "DÉBITO EM CONTA", "PIX", "BOLETO"];
 const STATUS = [
@@ -259,13 +262,22 @@ function mesclar(anterior, novo) {
   return { pareceres, novas, alteradas, sumiram, removidas, reapareceram };
 }
 
+/** Pareceres do lote aberto como estavam na última leitura/gravação: base
+ *  para saber o que o conferente mudou (e carimbar só isso). */
+let pareceresBase = {};
+const lembrarBase = () => { pareceresBase = JSON.parse(JSON.stringify(estado.pareceres || {})); };
+
 function salvar() {
   try {
-    localStorage.setItem(chaveLote(estado.dados), JSON.stringify({
+    const final = gravarLote(chaveLote(estado.dados), {
       meta: estado.dados.meta, validacao: estado.dados.validacao,
       solicitacoes: estado.dados.solicitacoes, pareceres: estado.pareceres,
       removidas: estado.removidas || [], i: estado.i,
-    }));
+    }, pareceresBase);
+    // a junção pode ter trazido pareceres mais novos de outro computador
+    estado.pareceres = final.pareceres;
+    estado.removidas = final.removidas || [];
+    lembrarBase();
   } catch (e) { /* modo privado, cota cheia: a conferência continua, só não persiste */ }
 }
 
@@ -410,6 +422,7 @@ function carregar(chave, destino) {
   estado.dados = { meta: v.meta, validacao: v.validacao, solicitacoes: v.solicitacoes };
   estado.pareceres = v.pareceres || {};
   estado.removidas = v.removidas || [];
+  lembrarBase();
   estado.itens = ordenar(v.solicitacoes);
   // retoma na primeira pendente; com tudo conferido, volta onde estava
   const pend = primeiroPendente();
@@ -764,6 +777,7 @@ function salvarOtn(v, ym) {
   const anterior = hist[ym];
   hist[ym] = Math.round(v * 100) / 100;
   gravarHistoricoOtn(hist);
+  otnParaServidor();
   recalcularPoderes();
   if (estado.dados) salvar();
   carregarMesNaConfig(ym);
@@ -806,6 +820,7 @@ function renderAvisoOtn() {
     const h = lerHistoricoOtn();
     h[hoje] = vigente;
     gravarHistoricoOtn(h);
+    otnParaServidor();
     renderAvisoOtn();
   };
 }
@@ -984,12 +999,13 @@ function renderRetomar(confirmando) {
         return;
       }
       if (acao === "imprimir-dia") { imprimirDia(b, dia); return; }
-      if (acao === "retomar") carregar(chave);
-      else if (acao === "resumo") carregar(chave, "resumo");
+      if (acao === "retomar") abrirLote(chave);
+      else if (acao === "resumo") abrirLote(chave, "resumo");
       else if (acao === "perguntar") renderRetomar(chave);
       else if (acao === "cancelar") renderRetomar();
       else if (acao === "remover") {
         try { localStorage.removeItem(chave); } catch (e) { /* nada a fazer */ }
+        marcarPendente(baseDaChave(chave), "excluir");   // remove também no servidor
         renderRetomar();
       }
     };
@@ -1103,10 +1119,10 @@ function processarMultiEmpresa(dados) {
       if (partes2.length) notaMerge = ` — ${partes2.join(", ")}`;
     }
     try {
-      localStorage.setItem(chave, JSON.stringify({
+      gravarLote(chave, {
         meta: parte.meta, validacao: parte.validacao,
         solicitacoes: parte.solicitacoes, pareceres, removidas, i: 0,
-      }));
+      }, salvoAnterior ? (JSON.parse(salvoAnterior).pareceres || {}) : {});
     } catch (e) { /* modo privado, cota cheia: esta empresa não persiste */ }
     resumos.push(`${nomeEmpresa(parte.meta)} (${parte.solicitacoes.length}${notaMerge})`);
   }
@@ -1208,6 +1224,9 @@ async function processar(arquivo) {
     // abre na primeira solicitação ainda pendente.
     estado.itens = ordenar(dados.solicitacoes);
     estado.i = Math.max(0, primeiroPendente());
+    // base = pareceres de antes do relatório novo: os que mesclar() devolveu a
+    // pendente contam como alteração (e vencem em outro computador)
+    pareceresBase = salvo ? (JSON.parse(salvo).pareceres || {}) : {};
     salvar();
     irPara("revisao");
     render();
@@ -1662,7 +1681,7 @@ const COR_STATUS = {
 async function carregarExcelJS() {
   if (window.ExcelJS) return;
   const origens = [
-    "./vendor/exceljs.min.js",
+    "../conferencia/vendor/exceljs.min.js",
     "https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js",
   ];
   for (const src of origens) {
@@ -1687,7 +1706,7 @@ async function carregarExcelJS() {
 async function carregarSheetJS() {
   if (window.XLSX) return;
   const origens = [
-    "./vendor/xlsx.full.min.js",
+    "../conferencia/vendor/xlsx.full.min.js",
     "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js",
   ];
   for (const src of origens) {
@@ -2742,7 +2761,7 @@ async function gerarPlanilhaGeral() {
   btn.disabled = true; btn.textContent = "Gerando…";
   try {
     const { lotes, linhas } = consolidarLotes();
-    if (!linhas.length) throw new Error("não há conferência guardada neste navegador");
+    if (!linhas.length) throw new Error("não há conferência guardada");
     await carregarExcelJS();
     const wb = new ExcelJS.Workbook();
     wb.creator = "NOCTUS — Conferência de Pagamentos";
@@ -2811,6 +2830,380 @@ async function imprimirDia(btn, data) {
   }
 }
 
+/* ------------------------------------------------------------- servidor */
+/**
+ * Pedido do Rocha em 16/10/2026: "ao entrar em outra máquina, as conferências
+ * têm que aparecer lá; sempre todos os dados devem ficar no servidor".
+ *
+ * Até aqui cada conferência existia SÓ no localStorage do navegador onde foi
+ * feita: trocar de computador, limpar o navegador ou formatar a máquina
+ * perdia tudo, sem aviso. Agora:
+ *
+ *   - toda gravação (gravarLote) continua indo primeiro para o navegador — a
+ *     tela não espera a rede — e entra numa fila de envio ao Supabase
+ *     (tabela conferencias_noctus, um registro por usuário + dia + empresa,
+ *     cada usuário só enxerga as próprias pelas regras do banco);
+ *   - ao abrir o módulo (e ao voltar para a aba, e a cada 2 minutos) o
+ *     navegador baixa o que está no servidor e junta com o que tem;
+ *   - ao clicar em "Conferir"/"Ver resumo" baixa a versão mais nova daquela
+ *     conferência antes de abrir;
+ *   - sem conexão, o salvamento fica pendente neste navegador e é enviado
+ *     sozinho quando a conexão (ou o login) voltar. Um aviso no canto da tela
+ *     mostra se está tudo no servidor ou se há algo pendente.
+ *
+ * Duas máquinas mexendo na mesma conferência: a junção (juntarLotes) é feita
+ * POR S.N. — cada parecer leva o carimbo "em" (hora da última alteração) e
+ * vale o mais recente. Assim conferir a S.N. 10 numa máquina e a S.N. 20 na
+ * outra não faz uma apagar a outra. Lista de solicitações (relatório) vale a
+ * do lote salvo por último.
+ *
+ * Remoção ("✕" na lista) vira um registro "excluido" no servidor, para a
+ * outra máquina não ressuscitar a conferência na próxima sincronização.
+ *
+ * O servidor também guarda um histórico de auditoria (tabela
+ * conferencias_noctus_hist, preenchida por gatilho no banco): cada parecer
+ * alterado com o antes e o depois, quando a conferência foi criada e quando
+ * foi removida.
+ */
+const TABELA_CONF = "conferencias_noctus";
+const CHAVE_PEND = "noctus.sync.pendentes";
+const CHAVE_OTN_PEND = "noctus.sync.otn-pendente";
+const CONFIG_OTN = "otn_historico";
+
+const prefixoLocal = () => `${CHAVE}.${escopoUsuario()}.`;
+const baseDaChave = (chave) => (chave.startsWith(prefixoLocal()) ? chave.slice(prefixoLocal().length) : null);
+const chaveDaBase = (base) => prefixoLocal() + base;
+
+function lerJSON(chave) {
+  try { return JSON.parse(localStorage.getItem(chave) || "null"); } catch { return null; }
+}
+const lerLocal = (base) => lerJSON(chaveDaBase(base));
+
+function basesLocais() {
+  const out = [];
+  const pre = prefixoLocal();
+  for (let k = 0; k < localStorage.length; k++) {
+    const c = localStorage.key(k);
+    if (c && c.startsWith(pre)) out.push(c.slice(pre.length));
+  }
+  return out;
+}
+
+/* fila de envio — por usuário, sobrevive a fechar o navegador */
+const chavePend = () => `${CHAVE_PEND}.${escopoUsuario()}`;
+function lerPendentes() {
+  try { return JSON.parse(localStorage.getItem(chavePend()) || "{}") || {}; } catch { return {}; }
+}
+function gravarPendentes(p) {
+  try { localStorage.setItem(chavePend(), JSON.stringify(p)); } catch { /* sem espaço: tenta no próximo */ }
+}
+function marcarPendente(base, acao = "salvar", agendar = true) {
+  if (!base) return;
+  const p = lerPendentes();
+  p[base] = { acao, t: Date.now() };
+  gravarPendentes(p);
+  if (agendar) agendarEnvio();
+}
+
+/* carimbo por S.N. — só nos pareceres que o conferente mudou de fato */
+const canon = (p) => (p && typeof p === "object"
+  ? JSON.stringify(p, Object.keys(p).filter((k) => k !== "em").sort()) : String(p ?? ""));
+// parecer sem status, sem texto e sem apontamento oculto = "nunca mexido":
+// passar pela solicitação sem conferir não pode apagar o que outro computador fez
+const vazio = (p) => !p || (!p.status && !String(p.parecer || "").trim() && !(p.alertasOcultos || []).length);
+function carimbarPareceres(novos, base) {
+  const agora = Date.now();
+  for (const [sn, p] of Object.entries(novos || {})) {
+    if (!p || typeof p !== "object") continue;
+    const a = base?.[sn];
+    if ((a && canon(a) === canon(p)) || (vazio(a) && vazio(p))) { if (a?.em && !p.em) p.em = a.em; }
+    else p.em = agora;
+  }
+}
+
+/**
+ * Junta duas versões do mesmo lote (dia + empresa). Pura.
+ * - meta, solicitações e validação: as do lote salvo por último (salvoEm);
+ * - pareceres: por S.N., o de carimbo "em" mais recente — mas um parecer da
+ *   versão mais velha só vale se a solicitação não mudou entre as duas
+ *   (mesma regra de mesclar(): parecer sobre R$ 10.000 não vale para R$ 15.000);
+ * - removidas: as dos dois lados, sem repetir S.N.
+ */
+function juntarLotes(a, b) {
+  if (!a) return b;
+  if (!b) return a;
+  const novo = (b.salvoEm || 0) > (a.salvoEm || 0) ? b : a;
+  const velho = novo === a ? b : a;
+  const sigN = new Map((novo.solicitacoes || []).map((s) => [s.sn, assinatura(s)]));
+  const sigV = new Map((velho.solicitacoes || []).map((s) => [s.sn, assinatura(s)]));
+  const pareceres = {};
+  for (const sn of sigN.keys()) {
+    const pn = novo.pareceres?.[sn];
+    let pv = velho.pareceres?.[sn];
+    if (pv && sigV.get(sn) !== sigN.get(sn)) pv = null;
+    const p = !pv ? pn : !pn ? pv : ((pv.em || 0) > (pn.em || 0) ? pv : pn);
+    if (p) pareceres[sn] = p;
+  }
+  const rem = new Map();
+  for (const r of [...(velho.removidas || []), ...(novo.removidas || [])])
+    if (r && !sigN.has(r.sn)) rem.set(r.sn, r);
+  return { ...novo, pareceres, removidas: [...rem.values()],
+           salvoEm: Math.max(a.salvoEm || 0, b.salvoEm || 0) };
+}
+
+/**
+ * Grava um lote neste navegador (junto com o que já estava guardado) e põe
+ * na fila do servidor. `base` = pareceres como estavam antes da edição,
+ * para carimbar só o que mudou.
+ */
+function gravarLote(chave, lote, base) {
+  carimbarPareceres(lote.pareceres, base);
+  lote.salvoEm = Date.now();
+  const guardado = lerJSON(chave);
+  const final = guardado ? juntarLotes(guardado, lote) : lote;
+  localStorage.setItem(chave, JSON.stringify(final));
+  marcarPendente(baseDaChave(chave));
+  return final;
+}
+
+/* acesso ao Supabase com o login do NOCTUS */
+async function tokenServidor() {
+  const s = sessaoAtual() || (await renovarSessao());
+  return s?.accessToken || null;
+}
+function idDoToken(token) {
+  try {
+    const b64 = token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
+    return JSON.parse(atob(b64)).sub || null;
+  } catch { return null; }
+}
+async function servidor(caminho, opcoes = {}, tentouRenovar = false) {
+  const token = await tokenServidor();
+  if (!token) throw new Error("sem-login");
+  const r = await fetch(`${SB_URL}/rest/v1/${caminho}`, {
+    ...opcoes,
+    headers: { apikey: SB_KEY, Authorization: `Bearer ${token}`, "Content-Type": "application/json",
+               ...(opcoes.headers || {}) },
+  });
+  if (r.status === 401 && !tentouRenovar) {
+    if (await renovarSessao()) return servidor(caminho, opcoes, true);
+    throw new Error("sem-login");
+  }
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  return r;
+}
+async function baixarTodos() {
+  const r = await servidor(`${TABELA_CONF}?select=chave,dados,excluido`);
+  return r.json();
+}
+async function baixarUm(base) {
+  const r = await servidor(`${TABELA_CONF}?select=chave,dados,excluido&chave=eq.${encodeURIComponent(base)}`);
+  const [linha] = await r.json();
+  return linha || null;
+}
+async function enviarAoServidor(base, dados, excluido = false) {
+  const token = await tokenServidor();
+  const uid = token && idDoToken(token);
+  if (!uid) throw new Error("sem-login");
+  await servidor(`${TABELA_CONF}?on_conflict=auth_user_id,chave`, {
+    method: "POST",
+    headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
+    body: JSON.stringify({ auth_user_id: uid, chave: base, dados, excluido }),
+  });
+}
+const comPrazo = (promessa, ms) => Promise.race([
+  promessa, new Promise((_, falha) => setTimeout(() => falha(new Error("prazo")), ms))]);
+
+/* aviso discreto no canto da tela */
+let estadoSync = "";
+function statusSync(estadoNovo) {
+  estadoSync = estadoNovo;
+  let el = $("sync-status");
+  if (!el) {
+    const css = document.createElement("style");
+    css.textContent = `#sync-status{position:fixed;left:12px;bottom:12px;z-index:60;max-width:min(92vw,420px);
+      padding:.4rem .75rem;border-radius:999px;font-size:.75rem;line-height:1.35;border:1px solid var(--border,#262b36);
+      background:var(--surface,#12151c);color:var(--muted,#9aa3b2);box-shadow:0 6px 18px rgba(0,0,0,.35)}
+      #sync-status.ok{color:#1db06b;border-color:rgba(29,176,107,.45)}
+      #sync-status.aviso{color:#e3b341;border-color:rgba(227,179,65,.5);border-radius:12px}
+      #sync-status.erro{color:#e5534b;border-color:rgba(229,83,75,.5);border-radius:12px}
+      #sync-status a{color:inherit}
+      @media print{#sync-status{display:none}}`;
+    document.head.appendChild(css);
+    el = document.createElement("div");
+    el.id = "sync-status";
+    el.setAttribute("role", "status");
+    document.body.appendChild(el);
+  }
+  const textos = {
+    enviando: ["", "Salvando no servidor…"],
+    ok: ["ok", "✓ Tudo salvo no servidor"],
+    offline: ["aviso", "Sem conexão com o servidor. Está salvo neste computador e será enviado sozinho quando a conexão voltar."],
+    "sem-login": ["erro", `Sessão expirada: o que você fizer fica neste computador até <a href="../#/login">entrar de novo no NOCTUS</a>.`],
+  };
+  const [classe, texto] = textos[estadoNovo] || textos.ok;
+  el.className = classe;
+  el.innerHTML = texto;
+}
+function falhaSync(e) {
+  statusSync(e?.message === "sem-login" ? "sem-login" : "offline");
+}
+
+/* envio da fila */
+let enviando = false, reenviar = false, timerEnvio = null;
+function agendarEnvio(ms = 1200) {
+  clearTimeout(timerEnvio);
+  timerEnvio = setTimeout(enviarPendentes, ms);
+}
+async function enviarPendentes() {
+  if (enviando) { reenviar = true; return; }
+  const pend = lerPendentes();
+  const otnPendente = localStorage.getItem(CHAVE_OTN_PEND) === "1";
+  if (!Object.keys(pend).length && !otnPendente) { if (estadoSync !== "sem-login") statusSync("ok"); return; }
+  enviando = true;
+  statusSync("enviando");
+  try {
+    for (const [base, item] of Object.entries(pend)) {
+      if (item.acao === "excluir") {
+        await enviarAoServidor(base, { salvoEm: item.t }, true);
+      } else {
+        const local = lerLocal(base);
+        if (local) {
+          const remoto = await baixarUm(base);
+          let final = local;
+          if (remoto?.excluido && (remoto.dados?.salvoEm || 0) > (local.salvoEm || 0)) {
+            // removida em outra máquina DEPOIS deste salvamento: vale a remoção
+            localStorage.removeItem(chaveDaBase(base));
+            if (telaAtual === "upload") renderRetomar();
+            final = null;
+          } else if (remoto && !remoto.excluido) {
+            final = juntarLotes(local, remoto.dados);
+            if (JSON.stringify(final) !== JSON.stringify(local))
+              localStorage.setItem(chaveDaBase(base), JSON.stringify(final));
+          }
+          if (final) await enviarAoServidor(base, final, false);
+        }
+      }
+      const atual = lerPendentes();
+      if (atual[base]?.t === item.t) { delete atual[base]; gravarPendentes(atual); }
+    }
+    if (otnPendente) { await enviarOtn(lerHistoricoOtn()); localStorage.removeItem(CHAVE_OTN_PEND); }
+    statusSync(Object.keys(lerPendentes()).length ? "enviando" : "ok");
+  } catch (e) {
+    falhaSync(e);
+  } finally {
+    enviando = false;
+    if (reenviar) { reenviar = false; agendarEnvio(300); }
+  }
+}
+
+/* sincronização completa: baixa tudo do servidor e junta com este navegador */
+let sincronizando = false;
+async function sincronizarTudo() {
+  if (sincronizando || escopoUsuario() === "sem-login") {
+    if (escopoUsuario() === "sem-login") statusSync("sem-login");
+    return;
+  }
+  sincronizando = true;
+  try {
+    const remotos = await baixarTodos();
+    const noServidor = new Set();
+    const pend = lerPendentes();
+    let mudouLocal = false;
+    for (const r of remotos) {
+      noServidor.add(r.chave);
+      const chave = chaveDaBase(r.chave);
+      const local = lerJSON(chave);
+      if (r.excluido) {
+        if (local && pend[r.chave]?.acao !== "salvar" && (local.salvoEm || 0) <= (r.dados?.salvoEm || 0)) {
+          localStorage.removeItem(chave);
+          mudouLocal = true;
+        } else if (local) {
+          marcarPendente(r.chave, "salvar", false);   // recriada aqui depois da remoção: reenvia
+        }
+        continue;
+      }
+      const final = juntarLotes(local, r.dados);
+      if (!local || JSON.stringify(final) !== JSON.stringify(local)) {
+        localStorage.setItem(chave, JSON.stringify(final));
+        mudouLocal = true;
+      }
+      if (local && JSON.stringify(final) !== JSON.stringify(r.dados)) marcarPendente(r.chave, "salvar", false);
+    }
+    // o que só existe neste navegador (conferências de antes desta versão,
+    // ou feitas sem conexão) sobe agora
+    for (const base of basesLocais())
+      if (!noServidor.has(base) && !pend[base]) marcarPendente(base, "salvar", false);
+    if (mudouLocal && telaAtual === "upload") renderRetomar();
+    await enviarPendentes();
+  } catch (e) {
+    falhaSync(e);
+  } finally {
+    sincronizando = false;
+  }
+}
+
+/** "Conferir"/"Ver resumo": pega a versão mais nova do servidor antes de abrir. */
+async function abrirLote(chave, destino) {
+  const base = baseDaChave(chave);
+  if (base) {
+    try {
+      const r = await comPrazo(baixarUm(base), 4000);
+      const local = lerJSON(chave);
+      if (r?.excluido && local && (local.salvoEm || 0) <= (r.dados?.salvoEm || 0)) {
+        localStorage.removeItem(chave);
+        renderRetomar();
+        $("upload-msg").innerHTML = `<div class="alerta erro">Esta conferência foi removida em outro computador.</div>`;
+        return;
+      }
+      if (r && !r.excluido) localStorage.setItem(chave, JSON.stringify(juntarLotes(local, r.dados)));
+    } catch (e) { /* sem conexão: abre o que está neste navegador */ }
+  }
+  carregar(chave, destino);
+}
+
+/* OTN: configuração do administrador, a mesma para todos os usuários */
+async function enviarOtn(hist) {
+  await servidor(`config_noctus?on_conflict=chave`, {
+    method: "POST",
+    headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
+    body: JSON.stringify({ chave: CONFIG_OTN, valor: hist }),
+  });
+}
+async function sincronizarOtn() {
+  try {
+    const r = await servidor(`config_noctus?select=valor&chave=eq.${CONFIG_OTN}`);
+    const [linha] = await r.json();
+    if (linha?.valor && typeof linha.valor === "object" && localStorage.getItem(CHAVE_OTN_PEND) !== "1") {
+      const antes = JSON.stringify(lerHistoricoOtn());
+      gravarHistoricoOtn(linha.valor);
+      if (JSON.stringify(lerHistoricoOtn()) !== antes) {
+        recalcularPoderes();
+        renderAvisoOtn();
+      }
+    } else if (!linha && ehAdmin()) {
+      await enviarOtn(lerHistoricoOtn());   // primeira vez: o histórico do admin vira o oficial
+    }
+  } catch (e) { /* segue com o OTN guardado neste navegador */ }
+}
+
+function iniciarSincronizacao() {
+  sincronizarOtn();
+  sincronizarTudo();
+  setInterval(() => { if (Object.keys(lerPendentes()).length) enviarPendentes(); }, 30 * 1000);
+  setInterval(() => { if (document.visibilityState === "visible") sincronizarTudo(); }, 2 * 60 * 1000);
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") sincronizarTudo();
+  });
+  window.addEventListener("online", () => sincronizarTudo());
+}
+
+/** O admin mudou o OTN: vai para o servidor (com fila, se estiver sem conexão). */
+function otnParaServidor() {
+  try { localStorage.setItem(CHAVE_OTN_PEND, "1"); } catch { /* sem espaço */ }
+  agendarEnvio(200);
+}
+
 /* ------------------------------------------------------------------------- início */
 migrarChaves();
 migrarOtn();
@@ -2823,6 +3216,7 @@ ligarRevisao();
 ligarAnexos();
 ligarResumo();
 ligarRenovacaoDeSessao();
+iniciarSincronizacao();
 if (new URLSearchParams(location.search).get("config") === "1") {
   configAbertaViaHome = true;
   abrirConfig();
