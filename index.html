@@ -9,6 +9,10 @@
       content="NOCTUS — Sistema Integrado de Processos e Eficiência"
     />
     <title>NOCTUS</title>
+    <script>
+      /* tema escolhido em Configurações > Aparência; aplicado antes de desenhar a página */
+      try { if (localStorage.getItem("noctus.tema") === "claro") document.documentElement.dataset.tema = "claro"; } catch (e) {}
+    </script>
     <!-- Login novo (16/10/2026): cadastro com e-mail, "Esqueci a senha" e pedido
          único do e-mail para quem ainda não tem. Para voltar ao login antigo,
          basta apagar a linha abaixo. -->
