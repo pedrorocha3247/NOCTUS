@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Conta — NOCTUS</title>
+<meta name="robots" content="noindex">
+<link rel="icon" type="image/svg+xml" href="../favicon.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<!-- Reaproveita o visual da tela de login (cartão, campos, botões, alertas). -->
+<link rel="stylesheet" href="../app.css">
+<link rel="stylesheet" href="./conta.css">
+</head>
+<body>
+<div class="login">
+  <div class="login__glow login__glow--green" aria-hidden="true"></div>
+  <div class="login__glow login__glow--blue" aria-hidden="true"></div>
+  <main class="login__card">
+    <header class="login__header">
+      <svg class="login__logo" height="56" viewBox="0 0 205 82" role="img" aria-label="Noctus" xmlns="http://www.w3.org/2000/svg" style="display:block;width:auto">
+        <defs>
+          <linearGradient id="noctus-wave" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="150" y2="55" spreadMethod="repeat">
+            <stop offset="0" stop-color="#1db06b"/><stop offset="0.5" stop-color="#2f6feb"/><stop offset="1" stop-color="#1db06b"/>
+            <animateTransform attributeName="gradientTransform" type="translate" from="0 0" to="150 55" dur="3.5s" repeatCount="indefinite"/>
+          </linearGradient>
+        </defs>
+        <text x="6" y="60" font-family="Inter, sans-serif" font-weight="700" letter-spacing="0.5" fill="url(#noctus-wave)"><tspan font-size="72">N</tspan><tspan font-size="50" dx="-3">octus</tspan></text>
+      </svg>
+    </header>
+    <section id="app" aria-live="polite"><p class="conta__texto">Carregando…</p></section>
+    <footer class="login__footer"><span>© <span id="ano"></span> NOCTUS — Sistema interno</span></footer>
+  </main>
+</div>
+<script type="module" src="./conta.js"></script>
+</body>
+</html>
