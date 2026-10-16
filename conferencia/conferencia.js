@@ -509,15 +509,21 @@ let telaAntesConfig = "upload";
 let configAbertaViaHome = false;
 
 function abrirConfig() {
-  if (!ehAdmin()) return;
   if (telaAtual !== "config") telaAntesConfig = telaAtual;
-  // O mês de referência volta SEMPRE pro mês corrente ao abrir (pedido do
-  // Rocha: "sempre que atualizar o mês ele atualiza sozinho para o mês atual"),
-  // e o valor mostrado é o vigente nele — assim basta corrigir o número.
-  carregarMesNaConfig(mesAtual());
-  fecharPopsOtn();
+  // Desde 16/10/2026 todo usuário abre Configurações (para escolher o tema),
+  // mas OTN e lista de usuários continuam só do administrador.
+  const admin = ehAdmin();
+  document.querySelectorAll("#tela-config .so-admin").forEach((el) => el.classList.toggle("oculto", !admin));
+  renderAparencia();
   $("cfg-msg").innerHTML = "";
-  carregarUsuarios();
+  if (admin) {
+    // O mês de referência volta SEMPRE pro mês corrente ao abrir (pedido do
+    // Rocha: "sempre que atualizar o mês ele atualiza sozinho para o mês atual"),
+    // e o valor mostrado é o vigente nele — assim basta corrigir o número.
+    carregarMesNaConfig(mesAtual());
+    fecharPopsOtn();
+    carregarUsuarios();
+  }
   irPara("config");
   if (configAbertaViaHome) {
     const a = $("voltar-topo");
@@ -854,6 +860,13 @@ function ligarConfig() {
   // histórico, e dá pra desfazer só regravando o valor certo.
   $("cfg-padrao").onclick = () => salvarOtn(OTN_PADRAO, $("cfg-mes").value || mesAtual());
   $("cfg-usuarios-atualizar").onclick = () => carregarUsuarios();
+  document.querySelectorAll("#cfg-aparencia [data-tema]").forEach((b) => {
+    b.onclick = () => { mudarPrefs({ tema: b.dataset.tema }); renderAparencia(); };
+  });
+  $("cfg-aviso-salvo").onchange = (e) => {
+    mudarPrefs({ avisoSalvoOculto: !e.target.checked });
+    if (estadoSync) statusSync(estadoSync);
+  };
   $("cfg-concluir").onclick = () => fecharConfig();
 }
 
@@ -3016,25 +3029,51 @@ const comPrazo = (promessa, ms) => Promise.race([
 
 /* aviso discreto no canto da tela */
 let estadoSync = "";
+/**
+ * Pedido do Rocha em 16/10/2026: botão para ocultar o "Tudo salvo no
+ * servidor". O ✕ no aviso verde (e no "Salvando…") esconde esses dois de vez
+ * — volta em Configurações > Aparência. Os avisos de PROBLEMA (sem conexão,
+ * sessão expirada) nunca ficam ocultos para sempre: o ✕ só dispensa aquele
+ * aviso, e ele volta se o problema voltar depois de resolvido.
+ */
+const CHAVE_OCULTAR_OK = "noctus.aviso-salvo-oculto";
+const avisoOkOculto = () => localStorage.getItem(CHAVE_OCULTAR_OK) === "1";
+let avisoDispensado = null;
+
 function statusSync(estadoNovo) {
+  if (estadoNovo !== avisoDispensado) avisoDispensado = null;
   estadoSync = estadoNovo;
   let el = $("sync-status");
   if (!el) {
     const css = document.createElement("style");
-    css.textContent = `#sync-status{position:fixed;left:12px;bottom:12px;z-index:60;max-width:min(92vw,420px);
-      padding:.4rem .75rem;border-radius:999px;font-size:.75rem;line-height:1.35;border:1px solid var(--border,#262b36);
-      background:var(--surface,#12151c);color:var(--muted,#9aa3b2);box-shadow:0 6px 18px rgba(0,0,0,.35)}
-      #sync-status.ok{color:#1db06b;border-color:rgba(29,176,107,.45)}
-      #sync-status.aviso{color:#e3b341;border-color:rgba(227,179,65,.5);border-radius:12px}
-      #sync-status.erro{color:#e5534b;border-color:rgba(229,83,75,.5);border-radius:12px}
+    css.textContent = `#sync-status{position:fixed;left:12px;bottom:12px;z-index:60;max-width:min(92vw,440px);
+      display:flex;align-items:flex-start;gap:.5rem;
+      padding:.4rem .5rem .4rem .75rem;border-radius:999px;font-size:.75rem;line-height:1.35;
+      border:1px solid var(--color-border);background:var(--color-surface);color:var(--color-text-secondary);
+      box-shadow:0 6px 18px rgba(0,0,0,.25)}
+      #sync-status[hidden]{display:none}
+      #sync-status.ok{color:var(--color-green);border-color:var(--color-green)}
+      #sync-status.aviso{color:var(--color-warn);border-color:var(--color-warn-border);border-radius:12px}
+      #sync-status.erro{color:var(--color-error);border-color:var(--color-error-border);border-radius:12px}
       #sync-status a{color:inherit}
+      #sync-status .sync-x{appearance:none;border:0;background:none;color:inherit;opacity:.7;cursor:pointer;
+        font:inherit;line-height:1;padding:.1rem .25rem;border-radius:4px;flex-shrink:0}
+      #sync-status .sync-x:hover{opacity:1;background:var(--color-surface-raised)}
       @media print{#sync-status{display:none}}`;
     document.head.appendChild(css);
     el = document.createElement("div");
     el.id = "sync-status";
     el.setAttribute("role", "status");
     document.body.appendChild(el);
+    el.addEventListener("click", (ev) => {
+      if (!ev.target.closest(".sync-x")) return;
+      if (estadoSync === "ok" || estadoSync === "enviando") mudarPrefs({ avisoSalvoOculto: true });
+      else avisoDispensado = estadoSync;
+      el.hidden = true;
+    });
   }
+  const tranquilo = estadoNovo === "ok" || estadoNovo === "enviando";
+  el.hidden = (tranquilo && avisoOkOculto()) || avisoDispensado === estadoNovo;
   const textos = {
     enviando: ["", "Salvando no servidor…"],
     ok: ["ok", "✓ Tudo salvo no servidor"],
@@ -3043,7 +3082,71 @@ function statusSync(estadoNovo) {
   };
   const [classe, texto] = textos[estadoNovo] || textos.ok;
   el.className = classe;
-  el.innerHTML = texto;
+  el.innerHTML = `<span>${texto}</span><button type="button" class="sync-x" title="${
+    tranquilo ? "Ocultar este aviso (volta em Configurações)" : "Dispensar este aviso"}" aria-label="Ocultar aviso">✕</button>`;
+}
+
+/* -------------------------------------------------- preferências do usuário */
+/**
+ * Pedido do Rocha em 16/10/2026: tema claro/escuro em Configurações, cada
+ * usuário escolhe o seu (o escuro continua o padrão) e vale para o NOCTUS
+ * inteiro. A escolha fica no navegador (chave "noctus.tema", lida já no
+ * <head> de cada página para não piscar escuro antes de clarear) E no
+ * servidor (tabela preferencias_noctus), para acompanhar o usuário em
+ * qualquer computador. O painel principal aplica a do servidor ao entrar.
+ */
+const CHAVE_TEMA = "noctus.tema";
+const CHAVE_PREFS_PEND = "noctus.sync.prefs-pendente";
+const aplicarTema = (t) => { document.documentElement.dataset.tema = t === "claro" ? "claro" : "escuro"; };
+const lerPrefsLocais = () => ({
+  tema: localStorage.getItem(CHAVE_TEMA) === "claro" ? "claro" : "escuro",
+  avisoSalvoOculto: avisoOkOculto(),
+});
+function gravarPrefsLocais(p) {
+  try {
+    if (p.tema === "claro" || p.tema === "escuro") localStorage.setItem(CHAVE_TEMA, p.tema);
+    if (typeof p.avisoSalvoOculto === "boolean") localStorage.setItem(CHAVE_OCULTAR_OK, p.avisoSalvoOculto ? "1" : "0");
+  } catch { /* sem espaço */ }
+  aplicarTema(lerPrefsLocais().tema);
+}
+/** Mudança feita pelo usuário: aplica na hora e põe na fila do servidor. */
+function mudarPrefs(p) {
+  gravarPrefsLocais(p);
+  try { localStorage.setItem(CHAVE_PREFS_PEND, "1"); } catch { /* sem espaço */ }
+  agendarEnvio(200);
+}
+async function enviarPrefs() {
+  const token = await tokenServidor();
+  const uid = token && idDoToken(token);
+  if (!uid) throw new Error("sem-login");
+  await servidor(`preferencias_noctus?on_conflict=auth_user_id`, {
+    method: "POST",
+    headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
+    body: JSON.stringify({ auth_user_id: uid, prefs: lerPrefsLocais() }),
+  });
+}
+async function sincronizarPrefs() {
+  try {
+    if (localStorage.getItem(CHAVE_PREFS_PEND) === "1") return enviarPendentes();
+    const r = await servidor(`preferencias_noctus?select=prefs`);
+    const [linha] = await r.json();
+    if (linha?.prefs) {
+      gravarPrefsLocais(linha.prefs);
+      if (estadoSync) statusSync(estadoSync);
+      if (telaAtual === "config") renderAparencia();
+    } else {
+      await enviarPrefs();   // primeira vez deste usuário: o que está neste navegador vira o dele
+    }
+  } catch (e) { /* segue com o que está neste navegador */ }
+}
+
+/** Configurações > Aparência: marca o tema atual e o aviso de salvamento. */
+function renderAparencia() {
+  const { tema, avisoSalvoOculto } = lerPrefsLocais();
+  document.querySelectorAll("#cfg-aparencia [data-tema]").forEach((b) =>
+    b.setAttribute("aria-checked", String(b.dataset.tema === tema)));
+  const chk = $("cfg-aviso-salvo");
+  if (chk) chk.checked = !avisoSalvoOculto;
 }
 function falhaSync(e) {
   statusSync(e?.message === "sem-login" ? "sem-login" : "offline");
@@ -3059,7 +3162,8 @@ async function enviarPendentes() {
   if (enviando) { reenviar = true; return; }
   const pend = lerPendentes();
   const otnPendente = localStorage.getItem(CHAVE_OTN_PEND) === "1";
-  if (!Object.keys(pend).length && !otnPendente) { if (estadoSync !== "sem-login") statusSync("ok"); return; }
+  const prefsPendente = localStorage.getItem(CHAVE_PREFS_PEND) === "1";
+  if (!Object.keys(pend).length && !otnPendente && !prefsPendente) { if (estadoSync !== "sem-login") statusSync("ok"); return; }
   enviando = true;
   statusSync("enviando");
   try {
@@ -3088,6 +3192,7 @@ async function enviarPendentes() {
       if (atual[base]?.t === item.t) { delete atual[base]; gravarPendentes(atual); }
     }
     if (otnPendente) { await enviarOtn(lerHistoricoOtn()); localStorage.removeItem(CHAVE_OTN_PEND); }
+    if (prefsPendente) { await enviarPrefs(); localStorage.removeItem(CHAVE_PREFS_PEND); }
     statusSync(Object.keys(lerPendentes()).length ? "enviando" : "ok");
   } catch (e) {
     falhaSync(e);
@@ -3188,6 +3293,7 @@ async function sincronizarOtn() {
 }
 
 function iniciarSincronizacao() {
+  sincronizarPrefs();
   sincronizarOtn();
   sincronizarTudo();
   setInterval(() => { if (Object.keys(lerPendentes()).length) enviarPendentes(); }, 30 * 1000);
