@@ -445,3 +445,43 @@ kbd{background:var(--color-surface-raised);border:1px solid var(--color-border);
 .usuarios__aviso{display:flex;align-items:center;gap:.6rem;width:fit-content;max-width:100%;
   padding:.3rem .5rem .3rem .75rem;font-size:.8rem;margin-bottom:.6rem}
 .usuarios__aviso .alerta__x{position:static;flex:none}
+
+/* ------------------------------------------------------------ tema claro
+   Pedido do Rocha em 16/10/2026: tema claro opcional (o escuro continua o
+   padrão). Ligado por <html data-tema="claro">, escolhido em Configurações >
+   Aparência. Os tons de verde, azul e âmbar são mais escuros que os do tema
+   escuro para continuarem legíveis sobre o branco (contraste AA). */
+:root[data-tema="claro"]{
+  --color-bg:#f3f5f8; --color-surface:#ffffff; --color-surface-raised:#f1f3f6;
+  --color-border:#d8dde5;
+  --color-green:#0f7f4b; --color-green-hover:#0c6b3f; --color-green-dim:rgba(15,127,75,.10);
+  --color-blue:#2563eb; --color-blue-hover:#1d4ed8; --color-blue-dim:rgba(37,99,235,.10);
+  --color-text:#111827; --color-text-secondary:#4b5563; --color-text-muted:#6b7280;
+  --color-error:#c62828; --color-error-bg:rgba(198,40,40,.07); --color-error-border:rgba(198,40,40,.3);
+  --color-warn:#9a6700; --color-warn-bg:rgba(154,103,0,.08); --color-warn-border:rgba(154,103,0,.3);
+  --shadow-card:0 12px 32px rgba(15,23,42,.08);
+  color-scheme:light;
+}
+@media screen{
+  [data-tema="claro"] .status input:checked+label,
+  [data-tema="claro"] .botao.primario{color:#fff}
+  [data-tema="claro"] .status input:checked+label b{color:rgba(255,255,255,.7)}
+  [data-tema="claro"] .chip--apontada{border-color:rgba(154,103,0,.45);color:#9a6700}
+  [data-tema="claro"] .chip--apontada.on{border-color:#9a6700;color:#7a5200;background:rgba(154,103,0,.10)}
+  [data-tema="claro"] .parecer__apontamento{color:#7a5200;background:rgba(154,103,0,.08);border-color:rgba(154,103,0,.35)}
+}
+
+/* Configurações > Aparência */
+.tema-opcoes{display:inline-flex;border:1px solid var(--color-border);border-radius:var(--radius-md);
+  overflow:hidden;width:max-content;max-width:100%}
+.tema-opcao{appearance:none;border:0;background:transparent;color:var(--color-text-secondary);
+  font:inherit;font-size:.88rem;font-weight:600;padding:.5rem 1.25rem;cursor:pointer;
+  display:inline-flex;align-items:center;gap:.45rem}
+.tema-opcao+.tema-opcao{border-left:1px solid var(--color-border)}
+.tema-opcao:hover{color:var(--color-text)}
+.tema-opcao[aria-checked="true"]{background:var(--color-green-dim);color:var(--color-green)}
+.tema-opcao__amostra{width:.85rem;height:.85rem;border-radius:50%;border:1px solid var(--color-text-muted)}
+.tema-opcao__amostra--escuro{background:#12151c}
+.tema-opcao__amostra--claro{background:#ffffff}
+.cfg-check{display:flex;align-items:center;gap:.55rem;font-size:.88rem;color:var(--color-text-secondary);cursor:pointer}
+.cfg-check input{width:1rem;height:1rem;accent-color:var(--color-green);margin:0}
