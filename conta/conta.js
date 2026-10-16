@@ -168,7 +168,7 @@ function telaEmail() {
   app.innerHTML = `
     <h1 class="conta__titulo">Cadastre seu e-mail</h1>
     <p class="conta__texto">${nome ? `Olá, <strong>${nome}</strong>. ` : ""}Antes de acessar o NOCTUS, informe seu e-mail.
-      Ele será usado para recuperar sua senha se você esquecer. <strong>Você só precisa fazer isso uma vez.</strong></p>
+      Ele será usado para recuperar sua senha se você esquecer.</p>
     <form class="conta__form" id="form" novalidate>
       <div id="msg"></div>
       ${campo({ id: "email", label: "E-mail", type: "email", value: s.emailPendente || "", extra: 'autocomplete="email" autofocus' })}
