@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <!-- HOMOLOGAÇÃO do login novo (cadastro com e-mail, "Esqueci a senha" e
+         pedido único do e-mail). Usa o MESMO app.js e app.css da produção:
+         o <base> faz os caminhos apontarem para a raiz do site, e a flag
+         NOCTUS_V2 liga o comportamento novo só aqui. Para ligar em produção,
+         basta pôr a mesma flag no index.html da raiz. -->
+    <base href="../" />
+    <script>window.NOCTUS_V2 = true; window.NOCTUS_HOMOLOG = true;</script>
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="noindex" />
+    <title>NOCTUS (homologação)</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <script type="module" crossorigin src="./app.js"></script>
+    <link rel="stylesheet" crossorigin href="./app.css">
+  </head>
+  <body>
+    <div id="root"></div>
+  </body>
+</html>
