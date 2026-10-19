@@ -1511,6 +1511,18 @@ const CLASSE_STATUS = { Aprovado: "g", "Aguardando esclarecimentos": "b",
 let filtro = null;         // forma de pagamento (ou apontadas)
 let filtroStatus = null;   // status do parecer, combinado com o filtro acima
 let busca = "";            // texto livre buscado na observação/destinação
+/**
+ * Pedido do Rocha (19/10/2026): "um botão para ocultar a partir de 5
+ * solicitações, para não ficar o histórico extenso". A lista de pareceres
+ * mostra só as LIMITE_LISTA primeiras; o resto fica atrás de "Mostrar todas".
+ * Os cartões excedentes continuam no HTML, só escondidos por CSS
+ * (.parecer--alem), por dois motivos: a impressão sai sempre completa (o
+ * @media print reexibe), e a volta para o cartão aberto continua achando o
+ * elemento mesmo que ele seja o 80º. Trocar de aba, de status ou digitar na
+ * busca recolhe de novo: cada lista nova começa curta.
+ */
+const LIMITE_LISTA = 5;
+let listaCompleta = false;
 let ultimoAberto = null;   // cartão de onde o conferidor foi aberto
 /**
  * Pedido do Rocha em 07/10/2026: ao entrar numa empresa, o Resumo abria lá
@@ -1555,7 +1567,7 @@ function mostrarResumo() {
         >${apontadas} com apontamento</span>`] : [])
       .join("");
   $("res-filtros").querySelectorAll(".chip").forEach((c) => {
-    c.onclick = () => { filtro = c.dataset.t || null; mostrarResumo(); };
+    c.onclick = () => { filtro = c.dataset.t || null; listaCompleta = false; mostrarResumo(); };
   });
 
   // Filtro de status: vale DENTRO da aba escolhida acima, com as contagens da
@@ -1576,7 +1588,7 @@ function mostrarResumo() {
         .concat([`<button type="button" class="linkbtn" data-abrir="0">ocultar</button>`])
         .join("");
   $("res-status-filtros").querySelectorAll(".chip-st").forEach((c) => {
-    c.onclick = () => { filtroStatus = c.dataset.s || null; mostrarResumo(); };
+    c.onclick = () => { filtroStatus = c.dataset.s || null; listaCompleta = false; mostrarResumo(); };
   });
   $("res-status-filtros").querySelectorAll("[data-abrir]").forEach((b) => {
     b.onclick = () => {
@@ -1625,10 +1637,15 @@ function mostrarResumo() {
     // .textContent (não innerHTML) já escapa sozinho — nada de esc() aqui,
     // senão um termo com "&" apareceria como "&amp;" literal na tela.
     (termoBusca ? ` · observação contém "${busca.trim()}"` : "");
+  // voltando de uma solicitação que está além das 5 primeiras: abre a lista
+  // inteira, senão o cartão de onde ele saiu estaria escondido
+  if (voltarAoCartao && ultimoAberto &&
+      visiveis.findIndex((s) => s.sn === ultimoAberto) >= LIMITE_LISTA) listaCompleta = true;
   $("res-corpo").innerHTML = visiveis
-    .map((s) => {
+    .map((s, idx) => {
       const p = estado.pareceres[s.sn] || {};
-      return `<div class="parecer${p.status ? "" : " parecer--pendente"}"
+      return `<div class="parecer${p.status ? "" : " parecer--pendente"}${
+                   idx >= LIMITE_LISTA ? " parecer--alem" : ""}"
                    data-sn="${esc(s.sn)}" role="button" tabindex="0"
                    title="Abrir esta solicitação para conferir">
         <div class="parecer__topo">
@@ -1646,6 +1663,31 @@ function mostrarResumo() {
         ${p.parecer ? `<div class="parecer__texto">${esc(p.parecer)}</div>` : ""}
       </div>`;
     }).join("");
+  $("res-corpo").classList.toggle("res-corpo--completa", listaCompleta);
+  // botão criado aqui (uma vez) logo abaixo da lista, para não depender de
+  // mudança no index.html
+  let mais = $("res-mais");
+  if (!mais) {
+    mais = document.createElement("div");
+    mais.id = "res-mais";
+    mais.className = "res-mais";
+    $("res-corpo").after(mais);
+    mais.onclick = (e) => {
+      if (!e.target.closest("button")) return;
+      listaCompleta = !listaCompleta;
+      mostrarResumo();
+      // ao recolher, volta o topo da lista para a vista em vez de deixar a
+      // pessoa lá embaixo olhando para o vazio
+      if (!listaCompleta) $("res-lista").scrollIntoView({ block: "start", behavior: "smooth" });
+    };
+  }
+  const escondidas = visiveis.length - LIMITE_LISTA;
+  mais.innerHTML = escondidas > 0
+    ? `<button type="button" class="botao fantasma" aria-expanded="${listaCompleta}">${
+        listaCompleta
+          ? `Mostrar só as ${LIMITE_LISTA} primeiras`
+          : `Mostrar todas (mais ${escondidas})`}</button>`
+    : "";
 
   if (voltarAoCartao && ultimoAberto) {
     const alvo = $("res-corpo").querySelector(`[data-sn="${CSS.escape(ultimoAberto)}"]`);
@@ -1710,7 +1752,7 @@ function ligarResumo() {
   // tecla digitada destruiria e recriaria o <input>, perdendo o foco e o
   // cursor no meio da digitação. Por ficar fora desses containers, o valor e
   // o foco sobrevivem normalmente a cada re-render disparado pelo oninput.
-  $("res-busca").oninput = (e) => { busca = e.target.value; mostrarResumo(); };
+  $("res-busca").oninput = (e) => { busca = e.target.value; listaCompleta = false; mostrarResumo(); };
   $("btn-lista").onclick = () => {
     const lista = $("res-lista");
     lista.hidden = !lista.hidden;
