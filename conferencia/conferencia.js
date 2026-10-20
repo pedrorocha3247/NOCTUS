@@ -1520,9 +1520,22 @@ let busca = "";            // texto livre buscado na observação/destinação
  * @media print reexibe), e a volta para o cartão aberto continua achando o
  * elemento mesmo que ele seja o 80º. Trocar de aba, de status ou digitar na
  * busca recolhe de novo: cada lista nova começa curta.
+ *
+ * Ajuste de 20/10/2026 (pedido do Rocha): o "aberto/recolhido" era um só para
+ * tudo, então expandir a lista de uma empresa expandia a de qualquer outra
+ * conferência aberta depois. Agora é guardado POR CONFERÊNCIA (chaveLote =
+ * usuário + data + empresa): expandir a MOMENTUM não mexe na SLIM, nem em
+ * outro dia da própria MOMENTUM. Fica só na memória da página — recarregar
+ * volta tudo para 5, que é o padrão pedido.
  */
 const LIMITE_LISTA = 5;
-let listaCompleta = false;
+const listasAbertas = new Set();
+const chaveDaLista = () => (estado.dados ? chaveLote(estado.dados) : "");
+const listaCompleta = () => listasAbertas.has(chaveDaLista());
+function definirListaCompleta(aberta) {
+  if (aberta) listasAbertas.add(chaveDaLista());
+  else listasAbertas.delete(chaveDaLista());
+}
 let ultimoAberto = null;   // cartão de onde o conferidor foi aberto
 /**
  * Pedido do Rocha em 07/10/2026: ao entrar numa empresa, o Resumo abria lá
@@ -1567,7 +1580,7 @@ function mostrarResumo() {
         >${apontadas} com apontamento</span>`] : [])
       .join("");
   $("res-filtros").querySelectorAll(".chip").forEach((c) => {
-    c.onclick = () => { filtro = c.dataset.t || null; listaCompleta = false; mostrarResumo(); };
+    c.onclick = () => { filtro = c.dataset.t || null; definirListaCompleta(false); mostrarResumo(); };
   });
 
   // Filtro de status: vale DENTRO da aba escolhida acima, com as contagens da
@@ -1588,7 +1601,7 @@ function mostrarResumo() {
         .concat([`<button type="button" class="linkbtn" data-abrir="0">ocultar</button>`])
         .join("");
   $("res-status-filtros").querySelectorAll(".chip-st").forEach((c) => {
-    c.onclick = () => { filtroStatus = c.dataset.s || null; listaCompleta = false; mostrarResumo(); };
+    c.onclick = () => { filtroStatus = c.dataset.s || null; definirListaCompleta(false); mostrarResumo(); };
   });
   $("res-status-filtros").querySelectorAll("[data-abrir]").forEach((b) => {
     b.onclick = () => {
@@ -1640,7 +1653,7 @@ function mostrarResumo() {
   // voltando de uma solicitação que está além das 5 primeiras: abre a lista
   // inteira, senão o cartão de onde ele saiu estaria escondido
   if (voltarAoCartao && ultimoAberto &&
-      visiveis.findIndex((s) => s.sn === ultimoAberto) >= LIMITE_LISTA) listaCompleta = true;
+      visiveis.findIndex((s) => s.sn === ultimoAberto) >= LIMITE_LISTA) definirListaCompleta(true);
   $("res-corpo").innerHTML = visiveis
     .map((s, idx) => {
       const p = estado.pareceres[s.sn] || {};
@@ -1663,7 +1676,7 @@ function mostrarResumo() {
         ${p.parecer ? `<div class="parecer__texto">${esc(p.parecer)}</div>` : ""}
       </div>`;
     }).join("");
-  $("res-corpo").classList.toggle("res-corpo--completa", listaCompleta);
+  $("res-corpo").classList.toggle("res-corpo--completa", listaCompleta());
   // botão criado aqui (uma vez) logo abaixo da lista, para não depender de
   // mudança no index.html
   let mais = $("res-mais");
@@ -1674,17 +1687,17 @@ function mostrarResumo() {
     $("res-corpo").after(mais);
     mais.onclick = (e) => {
       if (!e.target.closest("button")) return;
-      listaCompleta = !listaCompleta;
+      definirListaCompleta(!listaCompleta());
       mostrarResumo();
       // ao recolher, volta o topo da lista para a vista em vez de deixar a
       // pessoa lá embaixo olhando para o vazio
-      if (!listaCompleta) $("res-lista").scrollIntoView({ block: "start", behavior: "smooth" });
+      if (!listaCompleta()) $("res-lista").scrollIntoView({ block: "start", behavior: "smooth" });
     };
   }
   const escondidas = visiveis.length - LIMITE_LISTA;
   mais.innerHTML = escondidas > 0
-    ? `<button type="button" class="botao fantasma" aria-expanded="${listaCompleta}">${
-        listaCompleta
+    ? `<button type="button" class="botao fantasma" aria-expanded="${listaCompleta()}">${
+        listaCompleta()
           ? `Mostrar só as ${LIMITE_LISTA} primeiras`
           : `Mostrar todas (mais ${escondidas})`}</button>`
     : "";
@@ -1752,7 +1765,7 @@ function ligarResumo() {
   // tecla digitada destruiria e recriaria o <input>, perdendo o foco e o
   // cursor no meio da digitação. Por ficar fora desses containers, o valor e
   // o foco sobrevivem normalmente a cada re-render disparado pelo oninput.
-  $("res-busca").oninput = (e) => { busca = e.target.value; listaCompleta = false; mostrarResumo(); };
+  $("res-busca").oninput = (e) => { busca = e.target.value; definirListaCompleta(false); mostrarResumo(); };
   $("btn-lista").onclick = () => {
     const lista = $("res-lista");
     lista.hidden = !lista.hidden;
