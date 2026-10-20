@@ -398,18 +398,33 @@ function migrarChaves() {
   } catch (e) { /* modo privado ou entrada corrompida: segue sem migrar */ }
 }
 
+/**
+ * Conferências do usuário para a lista: as cópias completas deste navegador
+ * (e as que ficaram só em memória) mais as do índice que estão só no
+ * servidor (20/10/2026: o navegador não guarda mais todas por completo).
+ */
 function lotesSalvos() {
   const out = [];
+  const vistas = new Set();
   const prefixo = `${CHAVE}.${escopoUsuario()}.`;
-  for (let k = 0; k < localStorage.length; k++) {
-    const chave = localStorage.key(k);
+  const chaves = [];
+  for (let k = 0; k < localStorage.length; k++) chaves.push(localStorage.key(k));
+  for (const c of memoria.keys()) if (!chaves.includes(c)) chaves.push(c);
+  for (const chave of chaves) {
     if (!chave || !chave.startsWith(prefixo)) continue;
     try {
-      const v = JSON.parse(localStorage.getItem(chave));
+      const v = lerJSON(chave);
       out.push({ chave, meta: v.meta, data: v.meta?.dataInicio || "sem data",
                  empresa: nomeEmpresa(v.meta), total: v.solicitacoes.length,
                  feitos: Object.values(v.pareceres || {}).filter((p) => p.status).length });
+      vistas.add(chave);
     } catch (e) { /* entrada corrompida: ignora */ }
+  }
+  for (const [base, r] of Object.entries(lerIndice())) {
+    const chave = chaveDaBase(base);
+    if (vistas.has(chave) || !r?.meta) continue;
+    out.push({ chave, meta: r.meta, data: r.meta.dataInicio || "sem data",
+               empresa: nomeEmpresa(r.meta), total: r.total || 0, feitos: r.feitos || 0 });
   }
   const ord = (d) => (d || "").split("/").reverse().join("-");
   return out.sort((a, b) => ord(b.data).localeCompare(ord(a.data)) ||
@@ -417,7 +432,7 @@ function lotesSalvos() {
 }
 
 function carregar(chave, destino) {
-  const v = JSON.parse(localStorage.getItem(chave));
+  const v = lerJSON(chave);
   ultimoAberto = null; voltarAoCartao = false;   // empresa nova: Resumo abre no topo
   estado.dados = { meta: v.meta, validacao: v.validacao, solicitacoes: v.solicitacoes };
   estado.pareceres = v.pareceres || {};
@@ -1065,7 +1080,7 @@ function renderRetomar(confirmando) {
       else if (acao === "perguntar") renderRetomar(chave);
       else if (acao === "cancelar") renderRetomar();
       else if (acao === "remover") {
-        try { localStorage.removeItem(chave); } catch (e) { /* nada a fazer */ }
+        removerLocal(chave);
         marcarPendente(baseDaChave(chave), "excluir");   // remove também no servidor
         renderRetomar();
       }
@@ -1141,7 +1156,7 @@ function dividirPorEmpresa(dados) {
  * só salva todas e volta pra tela inicial, com a lista de "Conferências em
  * andamento" já mostrando cada uma separada.
  */
-function processarMultiEmpresa(dados) {
+async function processarMultiEmpresa(dados) {
   const partes = dividirPorEmpresa(dados);
   const resumos = [];
   // Pedido do Rocha em 24/09/2026: quando o relatório novo sai com menos
@@ -1166,7 +1181,10 @@ function processarMultiEmpresa(dados) {
     // empresa pelo menos uma vez.
     calcularPoderes(parte.meta, parte.solicitacoes);
     const chave = chaveLote(parte);
-    const salvoAnterior = localStorage.getItem(chave);
+    // 20/10/2026: a cópia pode estar só no servidor; sem ela, um relatório
+    // reenviado viraria conferência nova na tela, sem os pareceres já dados
+    const anteriorObj = await garantirLocal(chave);
+    const salvoAnterior = anteriorObj ? JSON.stringify(anteriorObj) : null;
     let pareceres = {}, removidas = [], notaMerge = "";
     if (salvoAnterior) {
       const r = mesclar(JSON.parse(salvoAnterior), parte);
@@ -1260,13 +1278,14 @@ async function processar(arquivo) {
     }
 
     if (dados.meta.multiEmpresa) {
-      processarMultiEmpresa(dados);
+      await processarMultiEmpresa(dados);
       return;
     }
 
     msg.innerHTML = "";
 
-    const salvo = localStorage.getItem(chaveLote(dados));
+    const salvoObj = await garantirLocal(chaveLote(dados));
+    const salvo = salvoObj ? JSON.stringify(salvoObj) : null;
     estado.dados = dados;
     estado.i = 0;
     recalcularPoderes();
@@ -1899,7 +1918,11 @@ async function renovarSessao() {
     refreshToken: dados.refresh_token || s.refreshToken,
     expiresAt: Date.now() + (dados.expires_in || 3600) * 1000,
   };
-  localStorage.setItem(CHAVE_SESSAO, JSON.stringify(nova));
+  try { localStorage.setItem(CHAVE_SESSAO, JSON.stringify(nova)); }
+  catch {   // navegador cheio: libera cópias antigas para não perder a sessão
+    liberarEspaco(null, 20000);
+    try { localStorage.setItem(CHAVE_SESSAO, JSON.stringify(nova)); } catch { /* segue com a sessão em memória */ }
+  }
   return nova;
 }
 
@@ -2417,15 +2440,28 @@ async function gerarPlanilha() {
  * valor e nota entre dias diferentes, coisa que a conferência de um lote só,
  * por definição, não enxerga.
  */
-function consolidarLotes() {
+async function consolidarLotes(somenteData) {
+  // 20/10/2026: parte das conferências pode estar só no servidor (o navegador
+  // guarda as mais recentes). A planilha é registro da conferência, então
+  // precisa de TODAS: o que não está aqui é baixado agora, só em memória.
+  // Sem conexão para alguma delas, para com erro em vez de sair incompleta.
+  const alvo = lotesSalvos().filter((l) => !somenteData || l.data === somenteData);
+  const faltam = alvo.filter((l) => !lerJSON(l.chave));
+  const doServidor = new Map();
+  if (faltam.length) {
+    const linhasSrv = faltam.length > 8
+      ? await baixarTodos()
+      : await Promise.all(faltam.map((l) => baixarUm(baseDaChave(l.chave))));
+    for (const r of linhasSrv) if (r && !r.excluido && r.dados) doServidor.set(chaveDaBase(r.chave), r.dados);
+    const semResposta = faltam.filter((l) => !doServidor.has(l.chave));
+    if (semResposta.length)
+      throw new Error(`${semResposta.length} conferência(s) não puderam ser baixadas do servidor`);
+  }
   const lotes = [];
-  const prefixo = `${CHAVE}.${escopoUsuario()}.`;
-  for (let k = 0; k < localStorage.length; k++) {
-    const chave = localStorage.key(k);
-    if (!chave || !chave.startsWith(prefixo)) continue;
+  for (const { chave } of alvo) {
     try {
-      const v = JSON.parse(localStorage.getItem(chave));
-      if (!Array.isArray(v.solicitacoes)) continue;
+      const v = lerJSON(chave) || doServidor.get(chave);
+      if (!v || !Array.isArray(v.solicitacoes)) continue;
       lotes.push({
         data: v.meta?.dataInicio || "sem data",
         empresa: nomeEmpresa(v.meta),
@@ -2871,8 +2907,7 @@ function abaParametros(wb, plano, totalLinhas) {
 function renderRodapeGeral() {
   const caixa = $("rodape-upload");
   if (!caixa) return;
-  const { lotes } = consolidarLotes();
-  caixa.classList.toggle("oculto", !lotes.length);
+  caixa.classList.toggle("oculto", !lotesSalvos().length);
 }
 
 async function gerarPlanilhaGeral() {
@@ -2885,7 +2920,7 @@ async function gerarPlanilhaGeral() {
   };
   btn.disabled = true; btn.textContent = "Gerando…";
   try {
-    const { lotes, linhas } = consolidarLotes();
+    const { lotes, linhas } = await consolidarLotes();
     if (!linhas.length) throw new Error("não há conferência guardada");
     await carregarExcelJS();
     const wb = new ExcelJS.Workbook();
@@ -2924,7 +2959,7 @@ async function imprimirDia(btn, data) {
   };
   btn.disabled = true; btn.textContent = "Gerando…";
   try {
-    const { lotes, linhas } = consolidarLotes();
+    const { lotes, linhas } = await consolidarLotes(data);
     const lotesDia = lotes.filter((l) => l.data === data);
     const linhasDia = linhas.filter((l) => l.data === data);
     if (!linhasDia.length) throw new Error(`não há conferência guardada para ${data}`);
@@ -2989,18 +3024,170 @@ async function imprimirDia(btn, data) {
  * conferencias_noctus_hist, preenchida por gatilho no banco): cada parecer
  * alterado com o antes e o depois, quando a conferência foi criada e quando
  * foi removida.
+ *
+ * Correção de 20/10/2026 (o relatório de 21/10 não entrava até apagar o de
+ * 09/09): o navegador guardava uma cópia de TODAS as conferências e o espaço
+ * dele (~5 milhões de caracteres por site) encheu com 192 conferências. A
+ * gravação falhava em silêncio e, como o envio lê a cópia local, também não
+ * subia para o servidor. Além disso, a sincronização de 2 em 2 minutos
+ * comparava o texto JSON local com o do servidor; o Postgres (jsonb) reordena
+ * as chaves, então a comparação sempre dava "diferente" e TODAS as
+ * conferências eram reenviadas a cada ciclo (milhões de linhas na auditoria).
+ * Agora:
+ *   - o servidor é a fonte da verdade; o navegador guarda um ÍNDICE leve de
+ *     todas (data, empresa, totais) e uma cópia completa só das mais
+ *     recentes, dentro de ORCAMENTO_LOCAL. As demais são baixadas ao abrir;
+ *   - se o espaço acabar, saem primeiro as cópias mais antigas que já estão
+ *     no servidor (nunca uma com envio pendente ou a que está aberta); se
+ *     ainda assim não couber, a conferência fica em memória e vai direto
+ *     para o servidor, com aviso no canto da tela;
+ *   - a sincronização periódica baixa só o resumo (função
+ *     noctus_conf_resumo no banco) e decide pela hora de gravação (salvoEm),
+ *     não pelo texto; conteúdo só é comparado em forma canônica.
  */
 const TABELA_CONF = "conferencias_noctus";
 const CHAVE_PEND = "noctus.sync.pendentes";
 const CHAVE_OTN_PEND = "noctus.sync.otn-pendente";
 const CONFIG_OTN = "otn_historico";
+const CHAVE_INDICE = "noctus.conferencia-indice";
+/** Teto (em caracteres) das cópias completas guardadas neste navegador. */
+const ORCAMENTO_LOCAL = 2000000;
 
 const prefixoLocal = () => `${CHAVE}.${escopoUsuario()}.`;
 const baseDaChave = (chave) => (chave.startsWith(prefixoLocal()) ? chave.slice(prefixoLocal().length) : null);
 const chaveDaBase = (base) => prefixoLocal() + base;
 
+/** Conferências que não couberam no navegador: ficam aqui até a página fechar. */
+const memoria = new Map();
+
 function lerJSON(chave) {
-  try { return JSON.parse(localStorage.getItem(chave) || "null"); } catch { return null; }
+  try {
+    const t = localStorage.getItem(chave) ?? memoria.get(chave) ?? null;
+    return t ? JSON.parse(t) : null;
+  } catch { return null; }
+}
+
+/** JSON com as chaves em ordem fixa, para comparar conteúdo (o jsonb reordena). */
+function jsonCanonico(v) {
+  if (Array.isArray(v)) return `[${v.map(jsonCanonico).join(",")}]`;
+  if (v && typeof v === "object")
+    return `{${Object.keys(v).filter((k) => v[k] !== undefined).sort()
+      .map((k) => `${JSON.stringify(k)}:${jsonCanonico(v[k])}`).join(",")}}`;
+  return JSON.stringify(v ?? null);
+}
+const mesmoConteudo = (a, b) => jsonCanonico(a) === jsonCanonico(b);
+
+/** "21-10-2026.e15" → "2026-10-21", para ordenar da mais antiga para a mais nova. */
+const dataDaBase = (base) => {
+  const m = String(base).match(/^(\d{2})-(\d{2})-(\d{4})/);
+  return m ? `${m[3]}-${m[2]}-${m[1]}` : "0000";
+};
+
+/* índice leve de todas as conferências do usuário (o servidor é a fonte) */
+const chaveIndice = () => `${CHAVE_INDICE}.${escopoUsuario()}`;
+function lerIndice() {
+  try { return JSON.parse(localStorage.getItem(chaveIndice()) || "{}") || {}; } catch { return {}; }
+}
+function gravarIndice(ind) {
+  const t = JSON.stringify(ind);
+  try { localStorage.setItem(chaveIndice(), t); }
+  catch {
+    liberarEspaco(null, t.length, ind);
+    try { localStorage.setItem(chaveIndice(), t); } catch { /* fica sem índice: lista usa as cópias locais */ }
+  }
+}
+const resumoDoLote = (v) => ({
+  meta: v.meta, total: (v.solicitacoes || []).length,
+  feitos: Object.values(v.pareceres || {}).filter((p) => p?.status).length,
+  salvoEm: v.salvoEm || 0,
+});
+/**
+ * `srv` = salvoEm da versão que o servidor confirmadamente tem. Só uma cópia
+ * com srv >= salvoEm local pode sair do navegador (ver candidatasDespejo).
+ */
+function atualizarIndice(base, v, srv) {
+  if (!base) return;
+  const ind = lerIndice();
+  const antes = ind[base]?.srv;
+  if (v) ind[base] = { ...resumoDoLote(v), srv: srv ?? antes ?? 0 }; else delete ind[base];
+  gravarIndice(ind);
+}
+
+/** Cópias completas deste usuário que podem sair do navegador (já estão no servidor). */
+function candidatasDespejo(exceto, ind = lerIndice()) {
+  const pend = lerPendentes();
+  const aberta = estado?.dados?.meta ? chaveLote(estado.dados) : null;
+  const noServidor = (b) => {   // o servidor tem esta versão (ou uma mais nova)?
+    const v = lerJSON(chaveDaBase(b));
+    return !!v && (ind[b]?.srv || 0) >= (v.salvoEm || 0) && (ind[b]?.srv || 0) > 0;
+  };
+  return basesLocais()
+    .filter((b) => !pend[b] && chaveDaBase(b) !== exceto && chaveDaBase(b) !== aberta &&
+                   localStorage.getItem(chaveDaBase(b)) !== null && noServidor(b))
+    .sort((a, b) => dataDaBase(a).localeCompare(dataDaBase(b)) || a.localeCompare(b));
+}
+/** Remove cópias antigas até sobrar `precisa` caracteres (ou acabarem as candidatas). */
+function liberarEspaco(exceto, precisa, ind) {
+  let liberado = 0;
+  for (const base of candidatasDespejo(exceto, ind || lerIndice())) {
+    if (liberado >= precisa) break;
+    const chave = chaveDaBase(base);
+    const t = localStorage.getItem(chave) || "";
+    localStorage.removeItem(chave);   // segue listada pelo índice (só no servidor)
+    liberado += t.length + chave.length;
+  }
+  return liberado;
+}
+/** Mantém as cópias completas dentro de ORCAMENTO_LOCAL (saem as mais antigas). */
+function aparaCache(ind) {
+  try {
+    let total = 0;
+    for (const b of basesLocais()) total += (localStorage.getItem(chaveDaBase(b)) || "").length;
+    if (total > ORCAMENTO_LOCAL) liberarEspaco(null, total - ORCAMENTO_LOCAL, ind);
+  } catch { /* segue */ }
+}
+
+let avisouSemEspaco = false;
+/**
+ * Grava uma conferência neste navegador. Sem espaço: libera cópias antigas e
+ * tenta de novo; se ainda não couber, guarda em memória (o envio ao servidor
+ * lê daqui também) e avisa. Devolve true se ficou no navegador.
+ */
+function gravarLocal(chave, valor) {
+  const t = JSON.stringify(valor);
+  for (let tentativa = 0; tentativa < 3; tentativa++) {
+    try {
+      localStorage.setItem(chave, t);
+      memoria.delete(chave);
+      return true;
+    } catch (e) {
+      if (!liberarEspaco(chave, t.length + chave.length)) break;
+    }
+  }
+  memoria.set(chave, t);
+  if (!avisouSemEspaco) { avisouSemEspaco = true; statusSync("sem-espaco"); }
+  return false;
+}
+/** Remove a conferência deste navegador (cópia, memória e índice). */
+function removerLocal(chave) {
+  try { localStorage.removeItem(chave); } catch { /* nada a fazer */ }
+  memoria.delete(chave);
+  atualizarIndice(baseDaChave(chave), null);
+}
+
+/**
+ * Garante a conferência completa: do navegador ou, se ela só estiver no
+ * servidor, baixa (e guarda se couber). Null se não existir em lugar nenhum.
+ */
+async function garantirLocal(chave, prazo = 8000) {
+  const local = lerJSON(chave);
+  const base = baseDaChave(chave);
+  if (local || !base) return local;
+  try {
+    const r = await comPrazo(baixarUm(base), prazo);
+    if (r && !r.excluido && r.dados) { gravarLocal(chave, r.dados); return r.dados; }
+  } catch (e) { /* sem conexão: segue como nova */ }
+  return null;
 }
 const lerLocal = (base) => lerJSON(chaveDaBase(base));
 
@@ -3020,7 +3207,12 @@ function lerPendentes() {
   try { return JSON.parse(localStorage.getItem(chavePend()) || "{}") || {}; } catch { return {}; }
 }
 function gravarPendentes(p) {
-  try { localStorage.setItem(chavePend(), JSON.stringify(p)); } catch { /* sem espaço: tenta no próximo */ }
+  const t = JSON.stringify(p);
+  try { localStorage.setItem(chavePend(), t); }
+  catch {   // sem espaço: a fila não pode se perder, libera cópias antigas e tenta de novo
+    liberarEspaco(null, t.length + 20000);
+    try { localStorage.setItem(chavePend(), t); } catch { /* tenta no próximo */ }
+  }
 }
 function marcarPendente(base, acao = "salvar", agendar = true) {
   if (!base) return;
@@ -3086,8 +3278,11 @@ function gravarLote(chave, lote, base) {
   lote.salvoEm = Date.now();
   const guardado = lerJSON(chave);
   const final = guardado ? juntarLotes(guardado, lote) : lote;
-  localStorage.setItem(chave, JSON.stringify(final));
+  // a fila vem antes da cópia: se faltar espaço, liberarEspaco() já não
+  // apaga esta conferência e o envio ao servidor lê da memória
   marcarPendente(baseDaChave(chave));
+  gravarLocal(chave, final);
+  atualizarIndice(baseDaChave(chave), final);
   return final;
 }
 
@@ -3119,6 +3314,11 @@ async function servidor(caminho, opcoes = {}, tentouRenovar = false) {
 }
 async function baixarTodos() {
   const r = await servidor(`${TABELA_CONF}?select=chave,dados,excluido`);
+  return r.json();
+}
+/** Só o resumo (data, empresa, totais, hora de gravação): poucos KB em vez de MB. */
+async function baixarResumo() {
+  const r = await servidor(`rpc/noctus_conf_resumo`, { method: "POST", body: "{}" });
   return r.json();
 }
 async function baixarUm(base) {
@@ -3190,6 +3390,7 @@ function statusSync(estadoNovo) {
     enviando: ["", "Salvando no servidor…"],
     ok: ["ok", "✓ Tudo salvo no servidor"],
     offline: ["aviso", "Sem conexão com o servidor. Está salvo neste computador e será enviado sozinho quando a conexão voltar."],
+    "sem-espaco": ["aviso", "Este navegador está sem espaço: a conferência foi mantida em memória e enviada direto ao servidor. Não feche a página até aparecer “Tudo salvo no servidor”."],
     "sem-login": ["erro", `Sessão expirada: o que você fizer fica neste computador até <a href="../#/login">entrar de novo no NOCTUS</a>.`],
   };
   const [classe, texto] = textos[estadoNovo] || textos.ok;
@@ -3303,15 +3504,23 @@ async function enviarPendentes() {
           let final = local;
           if (remoto?.excluido && (remoto.dados?.salvoEm || 0) > (local.salvoEm || 0)) {
             // removida em outra máquina DEPOIS deste salvamento: vale a remoção
-            localStorage.removeItem(chaveDaBase(base));
+            removerLocal(chaveDaBase(base));
             if (telaAtual === "upload") renderRetomar();
             final = null;
           } else if (remoto && !remoto.excluido) {
             final = juntarLotes(local, remoto.dados);
-            if (JSON.stringify(final) !== JSON.stringify(local))
-              localStorage.setItem(chaveDaBase(base), JSON.stringify(final));
+            if (mesmoConteudo(final, remoto.dados)) {          // servidor já tem isto
+              atualizarIndice(base, local, remoto.dados.salvoEm || 0);
+              final = null;
+            } else if (!mesmoConteudo(final, local)) {
+              gravarLocal(chaveDaBase(base), final);
+              atualizarIndice(base, final);
+            }
           }
-          if (final) await enviarAoServidor(base, final, false);
+          if (final) {
+            await enviarAoServidor(base, final, false);
+            atualizarIndice(base, final, final.salvoEm || 0);
+          }
         }
       }
       const atual = lerPendentes();
@@ -3337,34 +3546,60 @@ async function sincronizarTudo() {
   }
   sincronizando = true;
   try {
-    const remotos = await baixarTodos();
+    // só o resumo; a conferência completa é baixada apenas quando a cópia
+    // deste navegador está atrás da do servidor (salvoEm menor)
+    const remotos = await baixarResumo();
     const noServidor = new Set();
     const pend = lerPendentes();
+    const indiceAntes = jsonCanonico(lerIndice());
+    const indice = {};
     let mudouLocal = false;
     for (const r of remotos) {
       noServidor.add(r.chave);
       const chave = chaveDaBase(r.chave);
       const local = lerJSON(chave);
+      const salvoRemoto = Number(r.salvo_em) || 0;
       if (r.excluido) {
-        if (local && pend[r.chave]?.acao !== "salvar" && (local.salvoEm || 0) <= (r.dados?.salvoEm || 0)) {
-          localStorage.removeItem(chave);
+        if (local && pend[r.chave]?.acao !== "salvar" && (local.salvoEm || 0) <= salvoRemoto) {
+          removerLocal(chave);
           mudouLocal = true;
         } else if (local) {
+          indice[r.chave] = { ...resumoDoLote(local), srv: 0 };
           marcarPendente(r.chave, "salvar", false);   // recriada aqui depois da remoção: reenvia
         }
         continue;
       }
-      const final = juntarLotes(local, r.dados);
-      if (!local || JSON.stringify(final) !== JSON.stringify(local)) {
-        localStorage.setItem(chave, JSON.stringify(final));
+      indice[r.chave] = { meta: r.meta, total: r.total, feitos: r.feitos, salvoEm: salvoRemoto, srv: salvoRemoto };
+      if (!local) continue;                          // só no servidor: abre sob demanda
+      const salvoLocal = local.salvoEm || 0;
+      if (salvoRemoto > salvoLocal) {
+        const um = await baixarUm(r.chave);
+        if (!um || um.excluido || !um.dados) continue;
+        const final = juntarLotes(local, um.dados);
+        if (!mesmoConteudo(final, um.dados)) {
+          // este navegador tinha parecer mais novo que o servidor não tem:
+          // carimba a hora para os outros computadores buscarem a junção
+          final.salvoEm = Date.now();
+          marcarPendente(r.chave, "salvar", false);
+        }
+        gravarLocal(chave, final);
+        indice[r.chave] = { ...resumoDoLote(final), srv: salvoRemoto };
         mudouLocal = true;
+      } else if (salvoLocal > salvoRemoto) {
+        indice[r.chave] = { ...resumoDoLote(local), srv: salvoRemoto };
+        if (!pend[r.chave]) marcarPendente(r.chave, "salvar", false);   // gravado aqui, não subiu
       }
-      if (local && JSON.stringify(final) !== JSON.stringify(r.dados)) marcarPendente(r.chave, "salvar", false);
     }
     // o que só existe neste navegador (conferências de antes desta versão,
     // ou feitas sem conexão) sobe agora
     for (const base of basesLocais())
-      if (!noServidor.has(base) && !pend[base]) marcarPendente(base, "salvar", false);
+      if (!noServidor.has(base)) {
+        const v = lerLocal(base);
+        if (v) indice[base] = { ...resumoDoLote(v), srv: 0 };
+        if (!pend[base]) marcarPendente(base, "salvar", false);
+      }
+    aparaCache(indice);   // antes do índice: com o navegador cheio, ele só cabe depois
+    if (jsonCanonico(indice) !== indiceAntes) { gravarIndice(indice); mudouLocal = true; }
     if (mudouLocal && telaAtual === "upload") renderRetomar();
     await enviarPendentes();
   } catch (e) {
@@ -3379,16 +3614,26 @@ async function abrirLote(chave, destino) {
   const base = baseDaChave(chave);
   if (base) {
     try {
-      const r = await comPrazo(baixarUm(base), 4000);
+      const r = await comPrazo(baixarUm(base), 8000);
       const local = lerJSON(chave);
-      if (r?.excluido && local && (local.salvoEm || 0) <= (r.dados?.salvoEm || 0)) {
-        localStorage.removeItem(chave);
+      if (r?.excluido && (!local || (local.salvoEm || 0) <= (r.dados?.salvoEm || 0))) {
+        removerLocal(chave);
         renderRetomar();
         $("upload-msg").innerHTML = `<div class="alerta erro">Esta conferência foi removida em outro computador.</div>`;
         return;
       }
-      if (r && !r.excluido) localStorage.setItem(chave, JSON.stringify(juntarLotes(local, r.dados)));
+      if (r && !r.excluido) {
+        const final = juntarLotes(local, r.dados);
+        if (!local || !mesmoConteudo(final, local)) gravarLocal(chave, final);
+        if (local && !mesmoConteudo(final, r.dados)) marcarPendente(base, "salvar");
+        atualizarIndice(base, final, r.dados.salvoEm || 0);
+      }
     } catch (e) { /* sem conexão: abre o que está neste navegador */ }
+  }
+  if (!lerJSON(chave)) {
+    $("upload-msg").innerHTML = `<div class="alerta erro">Não consegui abrir esta conferência:
+      ela está guardada no servidor e não houve resposta. Verifique a conexão e tente de novo.</div>`;
+    return;
   }
   carregar(chave, destino);
 }
