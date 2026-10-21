@@ -575,6 +575,17 @@ function ligarAnuncio() {
     fetch(fontes[k], { method: "HEAD", cache: "no-store" })
       .then((r) => { if (r.ok) { existe[k] = true; btn.hidden = false; } }).catch(() => {});
   }
+  // Pedido do Rocha (22/10/2026): vídeo mais lento. 0,8 = 20% mais devagar
+  // (24 s viram ~30 s); o navegador mantém o tom da trilha (preservesPitch).
+  // Para ajustar, troque só este número (1 = velocidade original).
+  const VELOCIDADE_ANUNCIO = 0.8;
+  const aplicarVelocidade = () => {
+    video.defaultPlaybackRate = VELOCIDADE_ANUNCIO;
+    video.playbackRate = VELOCIDADE_ANUNCIO;
+    video.preservesPitch = true;
+  };
+  aplicarVelocidade();
+  video.addEventListener("loadedmetadata", aplicarVelocidade);   // trocar o arquivo volta a velocidade ao padrão
   let antes = null;
   const somBtn = $("anuncio-som");
   const fechar = () => {
@@ -595,6 +606,7 @@ function ligarAnuncio() {
     modal.hidden = false;
     document.addEventListener("keydown", tecla);
     video.currentTime = 0;
+    aplicarVelocidade();
     video.muted = false;
     if (somBtn) somBtn.hidden = true;
     const p = video.play();                       // no clique, o navegador libera o som
