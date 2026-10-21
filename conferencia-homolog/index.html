@@ -13,6 +13,7 @@
   /* tema escolhido em Configurações > Aparência; aplicado antes de desenhar a página */
   try { if (localStorage.getItem("noctus.tema") === "claro") document.documentElement.dataset.tema = "claro"; } catch (e) {}
 </script>
+<script src="../noctus-erros.js"></script>
 <link rel="stylesheet" href="./conferencia.css">
 </head>
 <body>
@@ -277,6 +278,17 @@
         <div id="cfg-usuarios-lista" class="usuarios-lista"></div>
         <div class="otn-form">
           <button type="button" class="botao fantasma otn-salvar" id="cfg-usuarios-atualizar">Atualizar lista</button>
+        </div>
+      </div>
+
+      <div class="config-item config-item--coluna so-principal">
+        <div class="config-item__texto">
+          <strong>Registro de erros</strong>
+          <span class="sub">Detalhe técnico das falhas que aparecem para os usuários só como "Falha de comunicação… contate o administrador".</span>
+        </div>
+        <div id="cfg-erros-lista" class="erros-caixa"></div>
+        <div class="otn-form">
+          <button type="button" class="botao fantasma otn-salvar" id="cfg-erros-atualizar">Atualizar registro</button>
         </div>
       </div>
 
