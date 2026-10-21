@@ -517,6 +517,31 @@ function irPara(tela) {
 
 let telaAtual = "upload";
 
+/* ------------------------------------------------ mensagens de erro na tela */
+/**
+ * Pedido do Rocha (21/10/2026): erro técnico ("Failed to fetch", "HTTP 500",
+ * "TypeError: …", mensagem crua do Supabase) nunca aparece na tela. Só passa
+ * o texto escrito para o usuário — erros criados com avisoUsuario() aqui ou
+ * marcados com `aviso: true` no parser (ex.: layout do relatório não
+ * reconhecido, nada guardado para gerar planilha). Todo o resto vira uma
+ * mensagem padrão que orienta a tentar de novo e, se continuar, procurar o
+ * administrador. O detalhe técnico não é mostrado nem registrado.
+ */
+const MSG_FALHA_COMUNICACAO =
+  "Falha de comunicação com o servidor. Tente novamente em instantes; se o problema continuar, contate o administrador.";
+const MSG_FALHA_GERAL =
+  "Ocorreu uma falha inesperada. Tente novamente; se o problema continuar, contate o administrador.";
+function avisoUsuario(msg) {
+  const e = new Error(msg);
+  e.aviso = true;
+  return e;
+}
+/** Texto seguro para mostrar: "O que falhou. Orientação." */
+function msgErro(e, oQueFalhou, padrao = MSG_FALHA_COMUNICACAO) {
+  if (e && e.aviso) return `${oQueFalhou}: ${e.message}`;
+  return `${oQueFalhou}. ${padrao}`;
+}
+
 /* -------------------------------------------------------------- anúncio */
 let anuncioPrimeiraVez = async () => {};
 /**
@@ -725,7 +750,7 @@ async function carregarUsuarios(aviso) {
     if (!Array.isArray(lista)) throw new Error("resposta inesperada");
     renderUsuarios(lista, aviso);
   } catch (e) {
-    caixa.innerHTML = `<div class="alerta erro">Não consegui carregar os usuários (${escAnexo(e.message)}).</div>`;
+    caixa.innerHTML = `<div class="alerta erro">${escAnexo(msgErro(e, "Não consegui carregar os usuários"))}</div>`;
   }
 }
 
@@ -1435,7 +1460,8 @@ async function processar(arquivo) {
     irPara("revisao");
     render();
   } catch (e) {
-    msg.innerHTML = `<div class="alerta erro">Não consegui ler o relatório: ${e.message}</div>`;
+    msg.innerHTML = `<div class="alerta erro">${escAnexo(msgErro(e, "Não consegui ler o relatório",
+      "Confira se o arquivo é o relatório de débito exportado do SCK em Excel; se o problema continuar, contate o administrador."))}</div>`;
   }
 }
 
@@ -1952,7 +1978,7 @@ async function carregarExcelJS() {
       if (window.ExcelJS) return;
     } catch (e) { /* tenta a próxima origem */ }
   }
-  throw new Error("não consegui carregar a biblioteca de planilha");
+  throw avisoUsuario(`falha de comunicação ao carregar um componente do sistema. ${MSG_FALHA_COMUNICACAO.replace(/^Falha de comunicação com o servidor\. /, "")}`);
 }
 
 /**
@@ -1977,7 +2003,7 @@ async function carregarSheetJS() {
       if (window.XLSX) return;
     } catch (e) { /* tenta a próxima origem */ }
   }
-  throw new Error("não consegui carregar a biblioteca de leitura de planilha");
+  throw avisoUsuario(`falha de comunicação ao carregar um componente do sistema. ${MSG_FALHA_COMUNICACAO.replace(/^Falha de comunicação com o servidor\. /, "")}`);
 }
 
 function baixar(blob, nome) {
@@ -2250,7 +2276,7 @@ function renderAnexosLista(lista) {
       if (!a) return;
       btn.disabled = true;
       baixarAnexo(a)
-        .catch((e) => anexosAviso(e.message, true))
+        .catch((e) => anexosAviso(msgErro(e, "Não consegui abrir o anexo"), true))
         .finally(() => { btn.disabled = false; });
     };
   });
@@ -2262,7 +2288,7 @@ function renderAnexosLista(lista) {
       btn.disabled = true;
       removerAnexo(a)
         .then(() => carregarAnexos())
-        .catch((e) => { anexosAviso(e.message, true); btn.disabled = false; });
+        .catch((e) => { anexosAviso(msgErro(e, "Não consegui remover o anexo"), true); btn.disabled = false; });
     };
   });
 }
@@ -2289,7 +2315,7 @@ async function carregarAnexos() {
     renderAnexosLista(lista);
   } catch {
     if (anexosEstado.chave !== minhaChave) return;
-    $("anexos-lista").innerHTML = `<div class="sub">Não consegui carregar os anexos agora.</div>`;
+    $("anexos-lista").innerHTML = `<div class="sub">${escAnexo(msgErro(null, "Não consegui carregar os anexos"))}</div>`;
   }
 }
 
@@ -2308,7 +2334,7 @@ function ligarAnexos() {
       await subirAnexo(lote, s.sn, arquivo);
       if (anexosEstado.chave === minhaChave) { anexosAviso("", false); await carregarAnexos(); }
     } catch (e) {
-      anexosAviso(`Não consegui anexar: ${e.message}`, true);
+      anexosAviso(msgErro(e, "Não consegui anexar o arquivo"), true);
     } finally {
       $("anexos-btn").disabled = false;
     }
@@ -2547,7 +2573,7 @@ async function gerarPlanilha() {
       type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     }), `Conferencia_Pagamentos_${ref}.xlsx`);
   } catch (e) {
-    alertaNoResumo(`Não consegui gerar a planilha: ${e.message}`);
+    alertaNoResumo(msgErro(e, "Não consegui gerar a planilha", MSG_FALHA_GERAL));
   } finally {
     btn.disabled = false; btn.textContent = rotulo;
   }
@@ -2578,7 +2604,7 @@ async function consolidarLotes(somenteData) {
     for (const r of linhasSrv) if (r && !r.excluido && r.dados) doServidor.set(chaveDaBase(r.chave), r.dados);
     const semResposta = faltam.filter((l) => !doServidor.has(l.chave));
     if (semResposta.length)
-      throw new Error(`${semResposta.length} conferência(s) não puderam ser baixadas do servidor`);
+      throw avisoUsuario(`${semResposta.length} conferência(s) não puderam ser baixadas do servidor. ${MSG_FALHA_COMUNICACAO}`);
   }
   const lotes = [];
   for (const { chave } of alvo) {
@@ -3044,7 +3070,7 @@ async function gerarPlanilhaGeral() {
   btn.disabled = true; btn.textContent = "Gerando…";
   try {
     const { lotes, linhas } = await consolidarLotes();
-    if (!linhas.length) throw new Error("não há conferência guardada");
+    if (!linhas.length) throw avisoUsuario("não há conferência guardada");
     await carregarExcelJS();
     const wb = new ExcelJS.Workbook();
     wb.creator = "NOCTUS — Conferência de Pagamentos";
@@ -3063,7 +3089,7 @@ async function gerarPlanilhaGeral() {
     }), `Conferencias_Consolidado_${ref}.xlsx`);
     aviso("Planilha consolidada gerada.", false);
   } catch (e) {
-    aviso(`Não consegui gerar a planilha consolidada: ${e.message}`, true);
+    aviso(msgErro(e, "Não consegui gerar a planilha consolidada", MSG_FALHA_GERAL), true);
   } finally {
     btn.disabled = false; btn.textContent = rotulo;
   }
@@ -3085,7 +3111,7 @@ async function imprimirDia(btn, data) {
     const { lotes, linhas } = await consolidarLotes(data);
     const lotesDia = lotes.filter((l) => l.data === data);
     const linhasDia = linhas.filter((l) => l.data === data);
-    if (!linhasDia.length) throw new Error(`não há conferência guardada para ${data}`);
+    if (!linhasDia.length) throw avisoUsuario(`não há conferência guardada para ${data}`);
     await carregarExcelJS();
     const wb = new ExcelJS.Workbook();
     wb.creator = "NOCTUS — Conferência de Pagamentos";
@@ -3107,7 +3133,7 @@ async function imprimirDia(btn, data) {
     }), `Conferencias_${data.replace(/\//g, "-")}.xlsx`);
     aviso(`Planilha de ${data} gerada.`, false);
   } catch (e) {
-    aviso(`Não consegui gerar a planilha de ${data}: ${e.message}`, true);
+    aviso(msgErro(e, `Não consegui gerar a planilha de ${data}`, MSG_FALHA_GERAL), true);
   } finally {
     btn.disabled = false; btn.textContent = rotulo;
   }
