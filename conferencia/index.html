@@ -18,7 +18,13 @@
 <body>
 
 <header class="topo">
-  <h1>Conferência de Pagamentos <span>· NOCTUS</span></h1>
+  <div class="topo-titulo">
+    <h1>Conferência de Pagamentos <span>· NOCTUS</span></h1>
+    <button type="button" class="anuncio-link" id="btn-anuncio" aria-haspopup="dialog" hidden>
+      <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="15" height="14" rx="3"/><path d="M17 10l5-3v10l-5-3z"/></svg>
+      Assistir ao anúncio
+    </button>
+  </div>
   <nav>
     <a class="voltar" id="voltar-topo" href="../#/">Voltar</a>
   </nav>
@@ -269,5 +275,14 @@
 </main>
 
 <script type="module" src="./conferencia.js"></script>
+<!-- Anúncio do NOCTUS (pedido do Rocha em 21/10/2026): abre ao clicar em
+     "Assistir ao anúncio", abaixo do título. O vídeo só é baixado ao abrir. -->
+<div class="anuncio-modal" id="anuncio-modal" role="dialog" aria-modal="true" aria-label="Anúncio do NOCTUS" hidden>
+  <div class="anuncio-caixa">
+    <button type="button" class="anuncio-fechar" id="anuncio-fechar" aria-label="Fechar o anúncio">✕</button>
+    <video id="anuncio-video" playsinline controls preload="none" src="../conferencia/anuncio-noctus.mp4"></video>
+    <p class="anuncio-erro" id="anuncio-erro" hidden>Não foi possível carregar o anúncio agora. Tente de novo em alguns minutos.</p>
+  </div>
+</div>
 </body>
 </html>
