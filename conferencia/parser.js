@@ -414,7 +414,9 @@ function agruparLinhas(palavras) {
 }
 
 export async function parseRelatorio(arrayBuffer, pdfjsLib) {
-  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+  // isEvalSupported:false: proteção oficial contra a falha CVE-2024-4367 do pdf.js 4.0
+  // (PDF malicioso executando código), enquanto a biblioteca não é atualizada
+  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer, isEvalSupported: false }).promise;
 
   // Lê todas as páginas uma vez só (usado tanto para decidir o formato
   // quanto para o parse em si — evita buscar cada página duas vezes).
