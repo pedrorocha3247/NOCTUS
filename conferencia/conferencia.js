@@ -501,6 +501,46 @@ function irPara(tela) {
 
 let telaAtual = "upload";
 
+/* -------------------------------------------------------------- anúncio */
+/**
+ * "Assistir ao anúncio" (pedido do Rocha em 21/10/2026): abre o vídeo do
+ * NOCTUS numa janela por cima da tela. O vídeo (anuncio-noctus.mp4, na pasta
+ * conferencia/) só é baixado quando a pessoa clica; o botão só aparece depois
+ * de confirmar que o arquivo existe no site. Fecha no ✕, no Esc ou clicando
+ * fora do vídeo, e sempre para o som ao fechar.
+ */
+function ligarAnuncio() {
+  const btn = $("btn-anuncio"), modal = $("anuncio-modal"), video = $("anuncio-video"), erro = $("anuncio-erro");
+  if (!btn || !modal || !video) return;
+  // o botão só aparece se o vídeo estiver publicado (pergunta só o cabeçalho,
+  // sem baixar o vídeo): nunca mostra um botão que leva a um erro
+  fetch(video.getAttribute("src"), { method: "HEAD", cache: "no-store" })
+    .then((r) => { if (r.ok) btn.hidden = false; }).catch(() => {});
+  let antes = null;
+  const fechar = () => {
+    if (modal.hidden) return;
+    video.pause();
+    modal.hidden = true;
+    document.removeEventListener("keydown", tecla);
+    if (antes) antes.focus();
+  };
+  const tecla = (e) => { if (e.key === "Escape") fechar(); };
+  btn.onclick = () => {
+    antes = document.activeElement;
+    erro.hidden = true;
+    modal.hidden = false;
+    document.addEventListener("keydown", tecla);
+    video.currentTime = 0;
+    const p = video.play();                       // o clique libera o som
+    if (p && p.catch) p.catch(() => {});          // navegador bloqueou: fica o botão play
+    $("anuncio-fechar").focus();
+  };
+  $("anuncio-fechar").onclick = fechar;
+  modal.onclick = (e) => { if (e.target === modal) fechar(); };
+  video.onerror = () => { erro.hidden = false; };
+  video.onended = () => { video.currentTime = 0; };
+}
+
 function ligarVoltar() {
   const a = $("voltar-topo");
   if (!a) return;
@@ -3684,6 +3724,7 @@ function otnParaServidor() {
 migrarChaves();
 migrarOtn();
 ligarVoltar();
+ligarAnuncio();
 ligarConfig();
 renderAvisoOtn();
 ligarUpload();
