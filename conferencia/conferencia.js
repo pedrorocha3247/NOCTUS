@@ -1142,22 +1142,22 @@ function renderRetomar(confirmando) {
 
   const linha = (l) => l.chave === confirmando ? `
     <div class="lote lote--confirma">
-      <span>Remover a conferência de <b>${l.empresa}</b> em ${l.data}?
+      <span>Remover a conferência de <b>${escAnexo(l.empresa)}</b> em ${escAnexo(l.data)}?
         <span class="sub">${l.feitos ? `Os ${l.feitos} pareceres já dados serão perdidos.`
                                      : "Nenhum parecer foi dado nela."}</span></span>
       <span class="lote__acoes">
         <button class="botao fantasma" data-acao="cancelar">Cancelar</button>
-        <button class="botao perigo" data-acao="remover" data-chave="${l.chave}">Remover</button>
+        <button class="botao perigo" data-acao="remover" data-chave="${escAnexo(l.chave)}">Remover</button>
       </span>
     </div>` : `
     <div class="lote${l.feitos === l.total ? " lote--completa" : ""}">
-      <span class="lote__id">${l.empresa}
+      <span class="lote__id">${escAnexo(l.empresa)}
         <span class="sub">${l.feitos} de ${l.total} conferidas</span></span>
       <span class="lote__acoes">
-        <button class="botao fantasma" data-acao="resumo" data-chave="${l.chave}"
+        <button class="botao fantasma" data-acao="resumo" data-chave="${escAnexo(l.chave)}"
                 title="Abrir o relatório de pareceres deste dia">Ver resumo</button>
-        <button class="botao fantasma" data-acao="retomar" data-chave="${l.chave}">Conferir</button>
-        <button class="lote__x" data-acao="perguntar" data-chave="${l.chave}"
+        <button class="botao fantasma" data-acao="retomar" data-chave="${escAnexo(l.chave)}">Conferir</button>
+        <button class="lote__x" data-acao="perguntar" data-chave="${escAnexo(l.chave)}"
                 title="Remover esta conferência" aria-label="Remover esta conferência">✕</button>
       </span>
     </div>`;
@@ -1842,7 +1842,7 @@ function mostrarResumo() {
           <span class="parecer__sn">${s.sn}</span>
           <span class="parecer__valor">R$ ${moeda(s.valor)}</span>
           ${p.status
-            ? `<span class="marca marca--${idDoStatus(p.status)}">${p.status}</span>`
+            ? `<span class="marca marca--${idDoStatus(p.status)}">${esc(p.status)}</span>`
             : `<span class="marca marca--nenhum">Sem conferir</span>`}
           <span class="parecer__abrir">Abrir</span>
         </div>
