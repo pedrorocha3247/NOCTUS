@@ -68,6 +68,12 @@ a:hover{color:var(--color-blue-hover)}
 .anuncio-fechar:hover{border-color:var(--color-green);background:var(--color-green-dim)}
 .anuncio-erro{position:absolute;left:1rem;right:1rem;bottom:1rem;margin:0;padding:.75rem 1rem;border-radius:var(--radius-md);
   background:var(--color-surface);border:1px solid var(--color-border);color:var(--color-text-secondary);font-size:.85rem;text-align:center}
+/* abertura automática sem som (regra do navegador): convite para ligar o som */
+.anuncio-som{position:absolute;left:50%;bottom:4.5rem;transform:translateX(-50%);z-index:1;display:inline-flex;align-items:center;gap:.45rem;
+  padding:.6rem 1.1rem;border-radius:999px;border:none;background:var(--color-green);color:#06130c;font:inherit;font-size:.9rem;font-weight:700;
+  cursor:pointer;box-shadow:0 10px 30px rgba(0,0,0,.45)}
+.anuncio-som[hidden]{display:none}
+.anuncio-som:hover{filter:brightness(1.08)}
 @keyframes anuncio-entra{from{opacity:0}to{opacity:1}}
 @media (prefers-reduced-motion:reduce){.anuncio-modal{animation:none}}
 
