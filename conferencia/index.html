@@ -199,10 +199,31 @@
           <span class="sub">Tema do NOCTUS inteiro, só para o seu usuário.</span>
         </div>
         <div class="tema-opcoes" role="radiogroup" aria-label="Tema">
-          <button type="button" class="tema-opcao" role="radio" data-tema="escuro" aria-checked="true"><span class="tema-opcao__amostra tema-opcao__amostra--escuro" aria-hidden="true"></span>Escuro</button>
-          <button type="button" class="tema-opcao" role="radio" data-tema="claro" aria-checked="false"><span class="tema-opcao__amostra tema-opcao__amostra--claro" aria-hidden="true"></span>Claro</button>
+          <button type="button" class="tema-opcao" role="radio" data-tema="escuro" aria-checked="true">
+            <span class="tema-previa tema-previa--escuro" aria-hidden="true">
+              <span class="tp-topo"><span class="tp-logo"></span><span class="tp-linha tp-linha--curta"></span></span>
+              <span class="tp-cartao"><span class="tp-linha"></span><span class="tp-linha tp-linha--media"></span><span class="tp-chips"><span class="tp-chip tp-chip--ok"></span><span class="tp-chip"></span></span><span class="tp-botao"></span></span>
+            </span>
+            <span class="tema-opcao__rodape"><span class="tema-opcao__radio" aria-hidden="true"></span><span class="tema-opcao__nome">Escuro</span><span class="tema-opcao__tag">Padrão</span></span>
+          </button>
+          <button type="button" class="tema-opcao" role="radio" data-tema="claro" aria-checked="false">
+            <span class="tema-previa tema-previa--claro" aria-hidden="true">
+              <span class="tp-topo"><span class="tp-logo"></span><span class="tp-linha tp-linha--curta"></span></span>
+              <span class="tp-cartao"><span class="tp-linha"></span><span class="tp-linha tp-linha--media"></span><span class="tp-chips"><span class="tp-chip tp-chip--ok"></span><span class="tp-chip"></span></span><span class="tp-botao"></span></span>
+            </span>
+            <span class="tema-opcao__rodape"><span class="tema-opcao__radio" aria-hidden="true"></span><span class="tema-opcao__nome">Claro</span></span>
+          </button>
         </div>
-        <label class="cfg-check"><input type="checkbox" id="cfg-aviso-salvo" checked> Mostrar o aviso "Tudo salvo no servidor" no canto da tela</label>
+        <div class="cfg-linha">
+          <div class="cfg-linha__texto">
+            <strong>Aviso "Tudo salvo no servidor"</strong>
+            <span class="sub">Aparece no canto inferior esquerdo quando suas conferências foram salvas. Avisos de falha e de sem conexão aparecem sempre.</span>
+          </div>
+          <label class="interruptor" title="Mostrar ou esconder o aviso">
+            <input type="checkbox" id="cfg-aviso-salvo" role="switch" checked aria-label="Mostrar o aviso Tudo salvo no servidor">
+            <span class="interruptor__trilho" aria-hidden="true"><span class="interruptor__bola"></span></span>
+          </label>
+        </div>
       </div>
 
       <div class="config-item config-item--coluna so-admin">
