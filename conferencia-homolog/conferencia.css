@@ -50,6 +50,7 @@ a:hover{color:var(--color-blue-hover)}
   transition:color var(--transition-fast)}
 .anuncio-link svg{flex:none}
 .anuncio-link[hidden]{display:none}
+.em-config .anuncio-link,.em-config .anuncio-modal{display:none!important}   /* anúncio só na Conferência */
 .anuncio-link:hover{color:var(--color-blue)}
 .anuncio-link:focus-visible{outline:2px solid var(--color-blue);outline-offset:3px;border-radius:4px}
 /* janela do vídeo: fundo escurecido, vídeo vertical do tamanho da tela */
