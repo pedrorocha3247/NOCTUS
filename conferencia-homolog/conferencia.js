@@ -1632,43 +1632,42 @@ function mostrarResumo() {
   });
 
   const esc = (t) => String(t ?? "").replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
-  // Busca por texto (canto direito da barra de filtros — pedido do Rocha em
-  // 24/09/2026: "supondo coloco 'Almoço' irá trazer todas as solicitações
-  // que na observação contenha almoço"). O relatório não tem um campo único
-  // e sempre presente chamado "observação": a coluna "OBSERVAÇÃO" só existe
-  // de fato nas famílias DÉBITO EM CONTA/BOLETO (vira s.complemento — ver
-  // COLUNAS/detectarColunas em parser.js). Por isso a busca cobre DOIS
-  // campos de texto livre de cada solicitação — s.destinacao (a
-  // "Destinação", sempre presente e é o texto mostrado em todo cartão da
-  // lista) e s.complemento (a "Observação" de fato, quando a solicitação
-  // for débito/boleto) — maximizando o que o termo pode encontrar sem tocar
-  // em campos que não são texto descritivo (favorecido, CPF/CNPJ, status
-  // etc.). NÃO inclui banco/agência/conta nem chave PIX (campos `banco`,
-  // `agencia`, `contaBancaria`, `chavePix` — ver painel "Dados Bancários",
-  // acima) — são dado estruturado, não texto descritivo, e ficam de fora da
-  // busca de propósito (30/09/2026). Ponto que já saiu diferente entre as
-  // duas origens do relatório e pode precisar de validação com o Rocha: no
-  // caminho EXCEL, `s.complemento` de uma solicitação TED/TRANSFERÊNCIA/PIX
-  // bancário ainda vem com banco+agência+conta juntos (compatibilidade —
-  // ver montarComplementoExcel em parser.js), então esse texto ENTRA na
-  // busca quando o relatório é Excel mas NÃO entra quando é PDF — uma
-  // pequena inconsistência entre as duas origens que não chegava a
-  // acontecer antes de 30/09/2026 (quando os dois caminhos guardavam tudo
-  // junto do mesmo jeito). Ponto que pode precisar de validação com o
-  // Rocha: se algum dia ele quiser a busca restrita só à coluna
-  // "Observação" literal (não à Destinação), o campo de busca abaixo deve
-  // trocar de `textoBusca` para olhar só `s.complemento`.
-  const termoBusca = busca.trim().toLowerCase();
-  const textoBusca = (s) => `${s.destinacao || ""} ${s.complemento || ""}`.toLowerCase();
+  // Busca (canto direito da barra de filtros). Começou em 24/09/2026 só na
+  // observação/destinação ("supondo coloco 'Almoço'..."). Ampliada em
+  // 21/10/2026 a pedido do Rocha: "se eu colocar uma solicitação deve buscar o
+  // número da solicitação, ou um valor, ou nome de beneficiário". Agora cobre:
+  //   - nº da solicitação (S.N)       ex.: 1461374
+  //   - valor                         ex.: 40.653,24 · 40653,24 · R$ 140,50 · 140,5
+  //   - favorecido (beneficiário)     ex.: interlight · joao (acha JOÃO)
+  //   - CPF/CNPJ                      ex.: 12.345.678/0001-90 ou só os dígitos
+  //   - destinação e observação       ex.: almoço
+  // Regras: sem diferença de maiúsculas nem acentos; várias palavras têm que
+  // aparecer TODAS (ex.: "interlight luminárias" acha a da INTERLIGHT cuja
+  // destinação fala em luminárias); "R$" é ignorado. Palavra só de números
+  // (com ou sem ponto/vírgula) também é comparada pelos dígitos com o S.N, o
+  // CPF/CNPJ e o valor em centavos — assim "40653,24" acha R$ 40.653,24 mesmo
+  // sem o ponto de milhar. Continua de fora: banco/agência/conta e chave PIX
+  // (dado bancário, não descritivo — decisão de 30/09/2026).
+  const normBusca = (t) => String(t ?? "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  const digitos = (t) => String(t ?? "").replace(/\D/g, "");
+  const palavrasBusca = normBusca(busca).replace(/r\$/g, " ").split(/\s+/).filter(Boolean);
+  const termoBusca = palavrasBusca.join(" ");
+  const casaBusca = (s) => {
+    const texto = normBusca([s.sn, s.favorecido, s.cpfCnpj, s.destinacao, s.complemento,
+      moeda(s.valor), String(s.valor ?? "").replace(".", ",")].join(" | "));
+    const nums = [digitos(s.sn), digitos(s.cpfCnpj), String(Math.round(Number(s.valor || 0) * 100))];
+    return palavrasBusca.every((p) => texto.includes(p) ||
+      (/^[\d.,]+$/.test(p) && digitos(p) && nums.some((n) => n.includes(digitos(p)))));
+  };
   const visiveis = naAba
     .filter((s) => !filtroStatus || statusDoItem(s) === filtroStatus)
-    .filter((s) => !termoBusca || textoBusca(s).includes(termoBusca));
+    .filter((s) => !termoBusca || casaBusca(s));
   $("res-qtd").textContent = `· ${visiveis.length}` +
     (filtro === APONTADAS ? " com apontamento" : filtro ? " em " + filtro : "") +
     (filtroStatus ? ` · ${filtroStatus.toLowerCase()}` : "") +
     // .textContent (não innerHTML) já escapa sozinho — nada de esc() aqui,
     // senão um termo com "&" apareceria como "&amp;" literal na tela.
-    (termoBusca ? ` · observação contém "${busca.trim()}"` : "");
+    (termoBusca ? ` · busca "${busca.trim()}"` : "");
   // voltando de uma solicitação que está além das 5 primeiras: abre a lista
   // inteira, senão o cartão de onde ele saiu estaria escondido
   if (voltarAoCartao && ultimoAberto &&
