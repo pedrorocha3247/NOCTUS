@@ -669,7 +669,10 @@ function abrirConfig() {
     carregarMesNaConfig(mesAtual());
     fecharPopsOtn();
   }
-  if (principal) { carregarUsuarios(); carregarErros(); }
+  if (principal) {
+    if (!secaoOculta("usuarios")) carregarUsuarios();
+    if (!secaoOculta("erros")) carregarErros();
+  }
   irPara("config");
   if (configAbertaViaHome) {
     const a = $("voltar-topo");
@@ -3550,6 +3553,7 @@ let estadoSync = "";
  * aviso, e ele volta se o problema voltar depois de resolvido.
  */
 const CHAVE_OCULTAR_OK = "noctus.aviso-salvo-oculto";
+const CHAVE_SECOES_OCULTAS = "noctus.cfg.secoes-ocultas";
 const avisoOkOculto = () => localStorage.getItem(CHAVE_OCULTAR_OK) === "1";
 let avisoDispensado = null;
 
@@ -3626,13 +3630,21 @@ const lerPrefsLocais = () => ({
   tema: localStorage.getItem(CHAVE_TEMA) === "claro" ? "claro" : "escuro",
   avisoSalvoOculto: avisoOkOculto(),
   anuncioVisto: localStorage.getItem(chaveAnuncioVisto()) === "1",
+  secoesOcultas: lerSecoesOcultas(),
   em: Number(localStorage.getItem(CHAVE_PREFS_EM)) || 0,
 });
+function lerSecoesOcultas() {
+  try {
+    const v = JSON.parse(localStorage.getItem(CHAVE_SECOES_OCULTAS) || "[]");
+    return Array.isArray(v) ? v.filter((x) => typeof x === "string").slice(0, 20) : [];
+  } catch { return []; }
+}
 function gravarPrefsLocais(p) {
   try {
     if (p.tema === "claro" || p.tema === "escuro") localStorage.setItem(CHAVE_TEMA, p.tema);
     if (typeof p.avisoSalvoOculto === "boolean") localStorage.setItem(CHAVE_OCULTAR_OK, p.avisoSalvoOculto ? "1" : "0");
     if (p.anuncioVisto === true) localStorage.setItem(chaveAnuncioVisto(), "1");   // visto nunca volta a "não visto"
+    if (Array.isArray(p.secoesOcultas)) localStorage.setItem(CHAVE_SECOES_OCULTAS, JSON.stringify(p.secoesOcultas.slice(0, 20)));
     if (p.em) localStorage.setItem(CHAVE_PREFS_EM, String(p.em));
   } catch { /* sem espaço */ }
   aplicarTema(lerPrefsLocais().tema);
@@ -3678,6 +3690,45 @@ function renderAparencia() {
     b.setAttribute("aria-checked", String(b.dataset.tema === tema)));
   const chk = $("cfg-aviso-salvo");
   if (chk) chk.checked = !avisoSalvoOculto;
+  renderSecoesOcultas();
+}
+
+/**
+ * Pedido do Rocha (22/10/2026): cada seção das Configurações — menos Aparência e
+ * o aviso "Tudo salvo", que ficam sempre abertos — ganha um botão para ocultar
+ * e mostrar. Fica oculta só a parte de dentro; o título continua ali para
+ * reabrir. A escolha vai junto das outras preferências (servidor), então vale
+ * em qualquer computador. Seção oculta não busca dados (usuários, registro de
+ * erros): só busca quando for aberta.
+ */
+function secaoOculta(id) { return lerSecoesOcultas().includes(id); }
+function renderSecoesOcultas() {
+  const ocultas = lerSecoesOcultas();
+  document.querySelectorAll("#tela-config [data-secao]").forEach((sec) => {
+    let btn = sec.querySelector(":scope > .cfg-recolher");
+    if (!btn) {
+      btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "cfg-recolher";
+      btn.innerHTML = `<span class="cfg-recolher__txt"></span><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+      btn.onclick = () => alternarSecao(sec.dataset.secao);
+      sec.prepend(btn);
+    }
+    const oculta = ocultas.includes(sec.dataset.secao);
+    const titulo = sec.querySelector(".config-item__texto strong")?.textContent || "seção";
+    sec.classList.toggle("config-item--recolhido", oculta);
+    btn.setAttribute("aria-expanded", String(!oculta));
+    btn.setAttribute("aria-label", `${oculta ? "Mostrar" : "Ocultar"} ${titulo}`);
+    btn.querySelector(".cfg-recolher__txt").textContent = oculta ? "Mostrar" : "Ocultar";
+  });
+}
+function alternarSecao(id) {
+  const atuais = lerSecoesOcultas();
+  const abrindo = atuais.includes(id);
+  mudarPrefs({ secoesOcultas: abrindo ? atuais.filter((x) => x !== id) : [...atuais, id] });
+  renderSecoesOcultas();
+  if (abrindo && id === "usuarios") carregarUsuarios();
+  if (abrindo && id === "erros") carregarErros();
 }
 function falhaSync(e) {
   if (e?.message !== "sem-login") registrarErro(e, "sincronização das conferências com o servidor");
