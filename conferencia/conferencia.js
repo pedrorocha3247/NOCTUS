@@ -504,18 +504,26 @@ let telaAtual = "upload";
 /* -------------------------------------------------------------- anúncio */
 /**
  * "Assistir ao anúncio" (pedido do Rocha em 21/10/2026): abre o vídeo do
- * NOCTUS numa janela por cima da tela. O vídeo (anuncio-noctus.mp4, na pasta
- * conferencia/) só é baixado quando a pessoa clica; o botão só aparece depois
- * de confirmar que o arquivo existe no site. Fecha no ✕, no Esc ou clicando
- * fora do vídeo, e sempre para o som ao fechar.
+ * NOCTUS numa janela por cima da tela. Há duas versões na pasta conferencia/:
+ * deitada (16:9, anuncio-noctus-h.mp4) para telas largas e em pé (9:16) para
+ * celular, e a janela usa a que combina com a tela, para o vídeo ocupar o
+ * quadro inteiro sem faixas pretas. Se só uma estiver publicada, usa essa.
+ * O botão só aparece quando pelo menos uma existe no site, e o vídeo só é
+ * baixado quando a pessoa clica. Fecha no ✕, no Esc ou clicando fora, e
+ * sempre para o som ao fechar.
  */
 function ligarAnuncio() {
   const btn = $("btn-anuncio"), modal = $("anuncio-modal"), video = $("anuncio-video"), erro = $("anuncio-erro");
   if (!btn || !modal || !video) return;
-  // o botão só aparece se o vídeo estiver publicado (pergunta só o cabeçalho,
-  // sem baixar o vídeo): nunca mostra um botão que leva a um erro
-  fetch(video.getAttribute("src"), { method: "HEAD", cache: "no-store" })
-    .then((r) => { if (r.ok) btn.hidden = false; }).catch(() => {});
+  const caixa = modal.querySelector(".anuncio-caixa");
+  const fontes = { h: video.dataset.horizontal, v: video.dataset.vertical };
+  const existe = {};
+  // pergunta só o cabeçalho de cada arquivo (não baixa o vídeo)
+  for (const k of ["h", "v"]) {
+    if (!fontes[k]) continue;
+    fetch(fontes[k], { method: "HEAD", cache: "no-store" })
+      .then((r) => { if (r.ok) { existe[k] = true; btn.hidden = false; } }).catch(() => {});
+  }
   let antes = null;
   const fechar = () => {
     if (modal.hidden) return;
@@ -526,6 +534,10 @@ function ligarAnuncio() {
   };
   const tecla = (e) => { if (e.key === "Escape") fechar(); };
   btn.onclick = () => {
+    const quer = innerWidth >= innerHeight ? "h" : "v";
+    const usa = existe[quer] ? quer : (quer === "h" ? "v" : "h");
+    caixa.classList.toggle("h", usa === "h");
+    if (video.dataset.atual !== usa) { video.src = fontes[usa]; video.dataset.atual = usa; }
     antes = document.activeElement;
     erro.hidden = true;
     modal.hidden = false;
