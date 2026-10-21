@@ -20,12 +20,14 @@
          único do e-mail para quem ainda não tem. Para voltar ao login antigo,
          basta apagar a linha abaixo. -->
     <script>window.NOCTUS_V2 = true;</script>
+    <script src="./noctus-erros.js"></script>
     <script>
       /* Pedido do Rocha (21/10/2026): se a tela quebrar por um erro técnico (ou o
          sistema não carregar), mostra uma mensagem simples em vez de página em
          branco ou detalhe técnico. Só age com a área do sistema vazia. */
       (function(){var feito=0,montou=0;
       function falha(){var r=document.getElementById("root");if(feito||!r||r.childElementCount)return;feito=1;
+      try{window.NoctusErros&&NoctusErros.registrar(new Error(montou?"a tela parou de funcionar":"o sistema n\u00e3o carregou"),"tela de falha exibida")}catch(x){}
       r.innerHTML='<div role="alert" style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:1.5rem;text-align:center;background:var(--color-bg,#0a0c10);color:var(--color-text,#f2f4f8);font-family:Inter,system-ui,sans-serif"><div style="max-width:28rem"><h2 style="margin:0 0 .6rem;font-size:1.25rem">N\u00e3o foi poss\u00edvel carregar esta tela</h2><p style="margin:0 0 1.2rem;opacity:.75;line-height:1.5">Falha de comunica\u00e7\u00e3o com o servidor. Recarregue a p\u00e1gina; se o problema continuar, contate o administrador.</p><button type="button" onclick="location.reload()" style="padding:.6rem 1.2rem;border:none;border-radius:10px;background:#1db06b;color:#fff;font:inherit;font-weight:600;cursor:pointer">Recarregar</button></div></div>';}
       function depois(){if(montou)setTimeout(falha,80)}
       addEventListener("error",depois);addEventListener("unhandledrejection",depois);
