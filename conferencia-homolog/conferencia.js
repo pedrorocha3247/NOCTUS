@@ -502,6 +502,7 @@ function irPara(tela) {
 let telaAtual = "upload";
 
 /* -------------------------------------------------------------- anúncio */
+let anuncioPrimeiraVez = async () => {};
 /**
  * "Assistir ao anúncio" (pedido do Rocha em 21/10/2026): abre o vídeo do
  * NOCTUS numa janela por cima da tela. Há duas versões na pasta conferencia/:
@@ -525,6 +526,7 @@ function ligarAnuncio() {
       .then((r) => { if (r.ok) { existe[k] = true; btn.hidden = false; } }).catch(() => {});
   }
   let antes = null;
+  const somBtn = $("anuncio-som");
   const fechar = () => {
     if (modal.hidden) return;
     video.pause();
@@ -533,7 +535,7 @@ function ligarAnuncio() {
     if (antes) antes.focus();
   };
   const tecla = (e) => { if (e.key === "Escape") fechar(); };
-  btn.onclick = () => {
+  const abrir = (automatico) => {
     const quer = innerWidth >= innerHeight ? "h" : "v";
     const usa = existe[quer] ? quer : (quer === "h" ? "v" : "h");
     caixa.classList.toggle("h", usa === "h");
@@ -543,9 +545,36 @@ function ligarAnuncio() {
     modal.hidden = false;
     document.addEventListener("keydown", tecla);
     video.currentTime = 0;
-    const p = video.play();                       // o clique libera o som
-    if (p && p.catch) p.catch(() => {});          // navegador bloqueou: fica o botão play
+    video.muted = false;
+    if (somBtn) somBtn.hidden = true;
+    const p = video.play();                       // no clique, o navegador libera o som
+    if (p && p.catch) p.catch((e) => {
+      // abertura automática: sem um clique antes, o navegador só deixa tocar
+      // sem som. Toca mudo e mostra "Ativar som" por cima do vídeo.
+      if (e?.name !== "NotAllowedError") return;
+      video.muted = true;
+      video.play().catch(() => {});
+      if (somBtn && automatico) somBtn.hidden = false;
+    });
     $("anuncio-fechar").focus();
+  };
+  btn.onclick = () => abrir(false);
+  if (somBtn) somBtn.onclick = () => { video.muted = false; somBtn.hidden = true; video.play().catch(() => {}); };
+  video.onvolumechange = () => { if (!video.muted && somBtn) somBtn.hidden = true; };
+  anuncioPrimeiraVez = async () => {
+    // Pedido do Rocha (21/10/2026): o anúncio abre sozinho no PRIMEIRO acesso
+    // de cada usuário ao módulo, uma vez só. "Já viu" fica no servidor (junto
+    // com o tema), então abrir em outro computador não repete. Espera a
+    // resposta do servidor (até 5 s) antes de decidir, para não repetir para
+    // quem viu em outra máquina; sem login, não abre (não há a quem atribuir).
+    if (!sessaoAtual()) return;
+    await Promise.race([prefsCarregadas, new Promise((r) => setTimeout(r, 5000))]);
+    if (lerPrefsLocais().anuncioVisto) return;
+    for (let i = 0; i < 25 && !existe.h && !existe.v; i++) await new Promise((r) => setTimeout(r, 200));
+    if (!existe.h && !existe.v) return;            // vídeo não publicado: não marca como visto
+    if (telaAtual !== "upload" || !modal.hidden) return;   // já entrou em outra tela: não interrompe
+    mudarPrefs({ anuncioVisto: true });            // marca antes de tocar: fechar cedo também conta
+    abrir(true);
   };
   $("anuncio-fechar").onclick = fechar;
   modal.onclick = (e) => { if (e.target === modal) fechar(); };
@@ -3471,15 +3500,18 @@ const CHAVE_PREFS_PEND = "noctus.sync.prefs-pendente";
  */
 const CHAVE_PREFS_EM = "noctus.prefs.em";
 const aplicarTema = (t) => { document.documentElement.dataset.tema = t === "claro" ? "claro" : "escuro"; };
+const chaveAnuncioVisto = () => `noctus.anuncio.visto.${escopoUsuario()}`;   // por usuário: PC compartilhado
 const lerPrefsLocais = () => ({
   tema: localStorage.getItem(CHAVE_TEMA) === "claro" ? "claro" : "escuro",
   avisoSalvoOculto: avisoOkOculto(),
+  anuncioVisto: localStorage.getItem(chaveAnuncioVisto()) === "1",
   em: Number(localStorage.getItem(CHAVE_PREFS_EM)) || 0,
 });
 function gravarPrefsLocais(p) {
   try {
     if (p.tema === "claro" || p.tema === "escuro") localStorage.setItem(CHAVE_TEMA, p.tema);
     if (typeof p.avisoSalvoOculto === "boolean") localStorage.setItem(CHAVE_OCULTAR_OK, p.avisoSalvoOculto ? "1" : "0");
+    if (p.anuncioVisto === true) localStorage.setItem(chaveAnuncioVisto(), "1");   // visto nunca volta a "não visto"
     if (p.em) localStorage.setItem(CHAVE_PREFS_EM, String(p.em));
   } catch { /* sem espaço */ }
   aplicarTema(lerPrefsLocais().tema);
@@ -3714,8 +3746,9 @@ async function sincronizarOtn() {
   } catch (e) { /* segue com o OTN guardado neste navegador */ }
 }
 
+let prefsCarregadas = Promise.resolve();
 function iniciarSincronizacao() {
-  sincronizarPrefs();
+  prefsCarregadas = sincronizarPrefs();
   sincronizarOtn();
   sincronizarTudo();
   setInterval(() => { if (Object.keys(lerPendentes()).length) enviarPendentes(); }, 30 * 1000);
@@ -3749,4 +3782,6 @@ iniciarSincronizacao();
 if (new URLSearchParams(location.search).get("config") === "1") {
   configAbertaViaHome = true;
   abrirConfig();
+} else {
+  anuncioPrimeiraVez();
 }
