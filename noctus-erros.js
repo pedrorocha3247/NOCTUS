@@ -3,8 +3,9 @@
  *
  * As telas mostram só "Falha de comunicação… contate o administrador"; o
  * detalhe técnico vem para cá e fica guardado no servidor, na tabela
- * erros_noctus, que só o administrador principal consegue ler (Configurações >
- * Registro de erros, ou o Table Editor do Supabase).
+ * erros_noctus. Nenhuma tela do sistema lê essa tabela (pedido do Rocha,
+ * 22/10/2026): ela só é vista pelo painel do Supabase, como um log —
+ * Table Editor > erros_noctus, ou SQL Editor.
  *
  * Como funciona:
  *  - registrar(erro, "o que a pessoa estava fazendo") põe o erro numa fila no
