@@ -102,7 +102,7 @@ function traduzir(res, contexto) {
   const d = res.dados || {};
   const cod = d.error_code || d.code || "";
   const msg = String(d.msg || d.message || d.error_description || d.error || "");
-  if (res.status === 0) return "Sem conexão com o servidor. Verifique a internet e tente de novo.";
+  if (res.status === 0) return "Falha de comunicação com o servidor. Verifique a internet e tente de novo; se o problema continuar, contate o administrador.";
   const seg = msg.match(/after (\d+) seconds?/i);
   if (seg) return `Por segurança, espere ${seg[1]} segundos antes de pedir outro código.`;
   if (res.status === 429 || /rate.?limit/i.test(cod + msg))
@@ -118,7 +118,8 @@ function traduzir(res, contexto) {
     return contexto === "sessao" ? "Sua sessão expirou. Entre de novo para continuar." : "Não autorizado. Tente de novo.";
   if (cod === "email_address_not_authorized")
     return "O envio de e-mails ainda não está liberado para este endereço. Avise o administrador.";
-  return "Não foi possível concluir agora. Tente de novo em instantes.";
+  // qualquer outro erro: nada técnico na tela (pedido do Rocha, 21/10/2026)
+  return "Falha de comunicação com o servidor. Tente de novo em instantes; se o problema continuar, contate o administrador.";
 }
 
 /* --------------------------------------------------------------- sessão */
