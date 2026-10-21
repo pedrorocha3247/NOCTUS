@@ -526,8 +526,9 @@ let telaAtual = "upload";
  * reconhecido, nada guardado para gerar planilha). Todo o resto vira uma
  * mensagem padrão que orienta a tentar de novo e, se continuar, procurar o
  * administrador. O detalhe técnico não aparece na tela: vai para o registro
- * de erros (noctus-erros.js → tabela erros_noctus, lida só pelo administrador
- * principal em Configurações > Registro de erros). Pedido do Rocha, 21/10/2026.
+ * de erros (noctus-erros.js → tabela erros_noctus no Supabase). Pedido do
+ * Rocha, 22/10/2026: esse registro NÃO aparece em nenhuma tela do sistema —
+ * só no painel do Supabase (Table Editor > erros_noctus), como um log.
  */
 const MSG_FALHA_COMUNICACAO =
   "Falha de comunicação com o servidor. Tente novamente em instantes; se o problema continuar, contate o administrador.";
@@ -669,10 +670,7 @@ function abrirConfig() {
     carregarMesNaConfig(mesAtual());
     fecharPopsOtn();
   }
-  if (principal) {
-    if (!secaoOculta("usuarios")) carregarUsuarios();
-    if (!secaoOculta("erros")) carregarErros();
-  }
+  if (principal && !secaoOculta("usuarios")) carregarUsuarios();
   irPara("config");
   if (configAbertaViaHome) {
     const a = $("voltar-topo");
@@ -762,46 +760,6 @@ async function carregarUsuarios(aviso) {
     renderUsuarios(lista, aviso);
   } catch (e) {
     caixa.innerHTML = `<div class="alerta erro">${escAnexo(msgErro(e, "Não consegui carregar os usuários"))}</div>`;
-  }
-}
-
-/**
- * Configurações > Registro de erros (só o administrador principal; o servidor
- * também só entrega a tabela para o e-mail dele). Mostra os 30 mais recentes
- * com o detalhe técnico recolhido em "ver detalhe". Pedido do Rocha, 21/10/2026.
- */
-async function carregarErros() {
-  const caixa = $("cfg-erros-lista");
-  if (!caixa) return;
-  caixa.innerHTML = `<p class="sub">Carregando registro...</p>`;
-  window.NoctusErros?.enviar();   // manda o que estiver na fila deste navegador antes de ler
-  try {
-    const s = sessaoAtual();
-    if (!s) throw new Error("sem sessão");
-    const r = await fetch(
-      `${SB_URL}/rest/v1/erros_noctus?select=registrado_em,ocorrido_em,usuario,modulo,tela,operacao,mensagem,detalhe,navegador,ocorrencias&order=registrado_em.desc&limit=30`,
-      { headers: { apikey: SB_KEY, Authorization: `Bearer ${s.accessToken}` } });
-    if (!r.ok) throw new Error(`HTTP ${r.status}`);
-    const lista = await r.json();
-    if (!Array.isArray(lista)) throw new Error("resposta inesperada");
-    if (!lista.length) { caixa.innerHTML = `<p class="sub">Nenhum erro registrado.</p>`; return; }
-    const quando = (t) => t ? new Date(t).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" }) : "";
-    caixa.innerHTML = `<ul class="erros-lista">${lista.map((x) => `
-      <li class="erro-item">
-        <div class="erro-item__topo">
-          <span class="erro-item__quando">${escAnexo(quando(x.ocorrido_em || x.registrado_em))}</span>
-          <span class="erro-item__quem">${escAnexo(x.usuario || "sem login")} · ${escAnexo(x.modulo)}</span>
-          ${x.ocorrencias > 1 ? `<span class="erro-item__vezes" title="Repetiu ${x.ocorrencias} vezes em poucos minutos">${x.ocorrencias}×</span>` : ""}
-        </div>
-        ${x.operacao ? `<div class="erro-item__op">${escAnexo(x.operacao)}</div>` : ""}
-        <code class="erro-item__msg">${escAnexo(x.mensagem)}</code>
-        <details class="erro-item__det"><summary>ver detalhe</summary>
-          <pre>${escAnexo([`Tela: ${x.tela || "—"}`, `Navegador: ${x.navegador || "—"}`, "", x.detalhe || "(sem pilha)"].join("\n"))}</pre>
-        </details>
-      </li>`).join("")}</ul>
-      <p class="sub">${lista.length === 30 ? "Mostrando os 30 mais recentes." : `${lista.length} registro(s).`}</p>`;
-  } catch (e) {
-    caixa.innerHTML = `<div class="alerta erro">${escAnexo(msgErro(e, "Não consegui carregar o registro de erros"))}</div>`;
   }
 }
 
@@ -1096,8 +1054,6 @@ function ligarConfig() {
   // histórico, e dá pra desfazer só regravando o valor certo.
   $("cfg-padrao").onclick = () => salvarOtn(OTN_PADRAO, $("cfg-mes").value || mesAtual());
   $("cfg-usuarios-atualizar").onclick = () => carregarUsuarios();
-  const btnErros = $("cfg-erros-atualizar");   // opcional: some se o index.html for mais antigo
-  if (btnErros) btnErros.onclick = () => carregarErros();
   document.querySelectorAll("#cfg-aparencia [data-tema]").forEach((b) => {
     b.onclick = () => { mudarPrefs({ tema: b.dataset.tema }); renderAparencia(); };
   });
@@ -3698,8 +3654,8 @@ function renderAparencia() {
  * o aviso "Tudo salvo", que ficam sempre abertos — ganha um botão para ocultar
  * e mostrar. Fica oculta só a parte de dentro; o título continua ali para
  * reabrir. A escolha vai junto das outras preferências (servidor), então vale
- * em qualquer computador. Seção oculta não busca dados (usuários, registro de
- * erros): só busca quando for aberta.
+ * em qualquer computador. Seção oculta não busca dados (lista de usuários):
+ * só busca quando for aberta.
  */
 function secaoOculta(id) { return lerSecoesOcultas().includes(id); }
 function renderSecoesOcultas() {
@@ -3728,7 +3684,6 @@ function alternarSecao(id) {
   mudarPrefs({ secoesOcultas: abrindo ? atuais.filter((x) => x !== id) : [...atuais, id] });
   renderSecoesOcultas();
   if (abrindo && id === "usuarios") carregarUsuarios();
-  if (abrindo && id === "erros") carregarErros();
 }
 function falhaSync(e) {
   if (e?.message !== "sem-login") registrarErro(e, "sincronização das conferências com o servidor");
