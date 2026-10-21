@@ -525,19 +525,27 @@ let telaAtual = "upload";
  * marcados com `aviso: true` no parser (ex.: layout do relatório não
  * reconhecido, nada guardado para gerar planilha). Todo o resto vira uma
  * mensagem padrão que orienta a tentar de novo e, se continuar, procurar o
- * administrador. O detalhe técnico não é mostrado nem registrado.
+ * administrador. O detalhe técnico não aparece na tela: vai para o registro
+ * de erros (noctus-erros.js → tabela erros_noctus, lida só pelo administrador
+ * principal em Configurações > Registro de erros). Pedido do Rocha, 21/10/2026.
  */
 const MSG_FALHA_COMUNICACAO =
   "Falha de comunicação com o servidor. Tente novamente em instantes; se o problema continuar, contate o administrador.";
 const MSG_FALHA_GERAL =
   "Ocorreu uma falha inesperada. Tente novamente; se o problema continuar, contate o administrador.";
-function avisoUsuario(msg) {
+function avisoUsuario(msg, tecnico = false) {
   const e = new Error(msg);
   e.aviso = true;
+  e.tecnico = tecnico;   // aviso legível que ainda assim é falha técnica: vai para o registro
   return e;
+}
+/** Guarda o erro técnico no registro do NOCTUS (nunca derruba a tela). */
+function registrarErro(e, oQueFalhou) {
+  try { window.NoctusErros?.registrar(e, oQueFalhou); } catch { /* sem registro, segue */ }
 }
 /** Texto seguro para mostrar: "O que falhou. Orientação." */
 function msgErro(e, oQueFalhou, padrao = MSG_FALHA_COMUNICACAO) {
+  if (!e?.aviso || e.tecnico) registrarErro(e, oQueFalhou);
   if (e && e.aviso) return `${oQueFalhou}: ${e.message}`;
   return `${oQueFalhou}. ${padrao}`;
 }
@@ -661,7 +669,7 @@ function abrirConfig() {
     carregarMesNaConfig(mesAtual());
     fecharPopsOtn();
   }
-  if (principal) carregarUsuarios();
+  if (principal) { carregarUsuarios(); carregarErros(); }
   irPara("config");
   if (configAbertaViaHome) {
     const a = $("voltar-topo");
@@ -751,6 +759,46 @@ async function carregarUsuarios(aviso) {
     renderUsuarios(lista, aviso);
   } catch (e) {
     caixa.innerHTML = `<div class="alerta erro">${escAnexo(msgErro(e, "Não consegui carregar os usuários"))}</div>`;
+  }
+}
+
+/**
+ * Configurações > Registro de erros (só o administrador principal; o servidor
+ * também só entrega a tabela para o e-mail dele). Mostra os 30 mais recentes
+ * com o detalhe técnico recolhido em "ver detalhe". Pedido do Rocha, 21/10/2026.
+ */
+async function carregarErros() {
+  const caixa = $("cfg-erros-lista");
+  if (!caixa) return;
+  caixa.innerHTML = `<p class="sub">Carregando registro...</p>`;
+  window.NoctusErros?.enviar();   // manda o que estiver na fila deste navegador antes de ler
+  try {
+    const s = sessaoAtual();
+    if (!s) throw new Error("sem sessão");
+    const r = await fetch(
+      `${SB_URL}/rest/v1/erros_noctus?select=registrado_em,ocorrido_em,usuario,modulo,tela,operacao,mensagem,detalhe,navegador,ocorrencias&order=registrado_em.desc&limit=30`,
+      { headers: { apikey: SB_KEY, Authorization: `Bearer ${s.accessToken}` } });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const lista = await r.json();
+    if (!Array.isArray(lista)) throw new Error("resposta inesperada");
+    if (!lista.length) { caixa.innerHTML = `<p class="sub">Nenhum erro registrado.</p>`; return; }
+    const quando = (t) => t ? new Date(t).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" }) : "";
+    caixa.innerHTML = `<ul class="erros-lista">${lista.map((x) => `
+      <li class="erro-item">
+        <div class="erro-item__topo">
+          <span class="erro-item__quando">${escAnexo(quando(x.ocorrido_em || x.registrado_em))}</span>
+          <span class="erro-item__quem">${escAnexo(x.usuario || "sem login")} · ${escAnexo(x.modulo)}</span>
+          ${x.ocorrencias > 1 ? `<span class="erro-item__vezes" title="Repetiu ${x.ocorrencias} vezes em poucos minutos">${x.ocorrencias}×</span>` : ""}
+        </div>
+        ${x.operacao ? `<div class="erro-item__op">${escAnexo(x.operacao)}</div>` : ""}
+        <code class="erro-item__msg">${escAnexo(x.mensagem)}</code>
+        <details class="erro-item__det"><summary>ver detalhe</summary>
+          <pre>${escAnexo([`Tela: ${x.tela || "—"}`, `Navegador: ${x.navegador || "—"}`, "", x.detalhe || "(sem pilha)"].join("\n"))}</pre>
+        </details>
+      </li>`).join("")}</ul>
+      <p class="sub">${lista.length === 30 ? "Mostrando os 30 mais recentes." : `${lista.length} registro(s).`}</p>`;
+  } catch (e) {
+    caixa.innerHTML = `<div class="alerta erro">${escAnexo(msgErro(e, "Não consegui carregar o registro de erros"))}</div>`;
   }
 }
 
@@ -1045,6 +1093,8 @@ function ligarConfig() {
   // histórico, e dá pra desfazer só regravando o valor certo.
   $("cfg-padrao").onclick = () => salvarOtn(OTN_PADRAO, $("cfg-mes").value || mesAtual());
   $("cfg-usuarios-atualizar").onclick = () => carregarUsuarios();
+  const btnErros = $("cfg-erros-atualizar");   // opcional: some se o index.html for mais antigo
+  if (btnErros) btnErros.onclick = () => carregarErros();
   document.querySelectorAll("#cfg-aparencia [data-tema]").forEach((b) => {
     b.onclick = () => { mudarPrefs({ tema: b.dataset.tema }); renderAparencia(); };
   });
@@ -1978,7 +2028,8 @@ async function carregarExcelJS() {
       if (window.ExcelJS) return;
     } catch (e) { /* tenta a próxima origem */ }
   }
-  throw avisoUsuario(`falha de comunicação ao carregar um componente do sistema. ${MSG_FALHA_COMUNICACAO.replace(/^Falha de comunicação com o servidor\. /, "")}`);
+  throw Object.assign(avisoUsuario(`falha de comunicação ao carregar um componente do sistema. ${MSG_FALHA_COMUNICACAO.replace(/^Falha de comunicação com o servidor\. /, "")}`, true),
+    { detalheTecnico: `biblioteca ExcelJS não carregou (${origens.join(" | ")})` });
 }
 
 /**
@@ -2003,7 +2054,8 @@ async function carregarSheetJS() {
       if (window.XLSX) return;
     } catch (e) { /* tenta a próxima origem */ }
   }
-  throw avisoUsuario(`falha de comunicação ao carregar um componente do sistema. ${MSG_FALHA_COMUNICACAO.replace(/^Falha de comunicação com o servidor\. /, "")}`);
+  throw Object.assign(avisoUsuario(`falha de comunicação ao carregar um componente do sistema. ${MSG_FALHA_COMUNICACAO.replace(/^Falha de comunicação com o servidor\. /, "")}`, true),
+    { detalheTecnico: `biblioteca SheetJS não carregou (${origens.join(" | ")})` });
 }
 
 function baixar(blob, nome) {
@@ -2313,9 +2365,9 @@ async function carregarAnexos() {
     if (anexosEstado.chave !== minhaChave) return; // já navegou para outra solicitação
     anexosEstado.lista = lista;
     renderAnexosLista(lista);
-  } catch {
+  } catch (e) {
     if (anexosEstado.chave !== minhaChave) return;
-    $("anexos-lista").innerHTML = `<div class="sub">${escAnexo(msgErro(null, "Não consegui carregar os anexos"))}</div>`;
+    $("anexos-lista").innerHTML = `<div class="sub">${escAnexo(msgErro(e, "Não consegui carregar os anexos"))}</div>`;
   }
 }
 
@@ -2604,7 +2656,7 @@ async function consolidarLotes(somenteData) {
     for (const r of linhasSrv) if (r && !r.excluido && r.dados) doServidor.set(chaveDaBase(r.chave), r.dados);
     const semResposta = faltam.filter((l) => !doServidor.has(l.chave));
     if (semResposta.length)
-      throw avisoUsuario(`${semResposta.length} conferência(s) não puderam ser baixadas do servidor. ${MSG_FALHA_COMUNICACAO}`);
+      throw avisoUsuario(`${semResposta.length} conferência(s) não puderam ser baixadas do servidor. ${MSG_FALHA_COMUNICACAO}`, true);
   }
   const lotes = [];
   for (const { chave } of alvo) {
@@ -3628,6 +3680,7 @@ function renderAparencia() {
   if (chk) chk.checked = !avisoSalvoOculto;
 }
 function falhaSync(e) {
+  if (e?.message !== "sem-login") registrarErro(e, "sincronização das conferências com o servidor");
   statusSync(e?.message === "sem-login" ? "sem-login" : "offline");
 }
 
