@@ -131,23 +131,18 @@ h2{font-size:.95rem;font-weight:700;margin:0 0 1rem;letter-spacing:-.01em}
 .upload-empresas td.ue-novo{color:var(--color-green);font-weight:700}
 .upload-empresas td.ue-alt{color:#6ea0ff;font-weight:700}
 .upload-empresas td.ue-saiu{color:var(--color-error);font-weight:700}
-.upload-empresas tr.ue-sn td{text-align:left;white-space:normal;font-size:.75rem;color:var(--color-error);padding-top:0;border-bottom:1px solid var(--color-border)}
-.upload-empresas tr:has(+ .ue-sn) td{border-bottom:none}
 .upload-empresas tfoot td{font-weight:700;color:var(--color-text);border-bottom:none;background:var(--color-surface-raised)}
 [data-tema="claro"] .upload-empresas td.ue-alt{color:#1d4ed8}
 @media (max-width:560px){ /* celular: cada empresa vira um cartão — nome em cima, números numa faixa embaixo */
   .upload-empresas table,.upload-empresas tbody,.upload-empresas tfoot{display:block}
   .upload-empresas thead{display:none}
   .upload-empresas tr{display:grid;grid-template-columns:repeat(4,1fr);gap:.15rem .5rem;padding:.6rem .75rem;border-bottom:1px solid var(--color-border)}
-  .upload-empresas tr:has(+ .ue-sn){border-bottom:none;padding-bottom:.3rem}
   .upload-empresas td{display:block;padding:0;border:none;text-align:left}
   .upload-empresas td.ue-nome{grid-column:1/-1;min-width:0;margin-bottom:.3rem}
   .upload-empresas td[data-r]{min-width:0}
   .upload-empresas td[data-r]::before{content:attr(data-r);display:block;font-size:.66rem;font-weight:600;
     color:var(--color-text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .upload-empresas td[data-c]::before{content:attr(data-c)}
-  .upload-empresas tr.ue-sn{display:block;padding-top:0}
-  .upload-empresas tr.ue-sn td{padding:0}
   .upload-empresas tfoot tr{border-bottom:none;background:var(--color-surface-raised)}
   .upload-empresas tfoot td{background:none}
 }
