@@ -260,7 +260,7 @@ function detectarColunas(palavrasHeader, palavrasPagina, yCentro) {
 
   const faltando = OBRIGATORIOS.filter((c) => !marcos.some((m) => m.campo === c));
   if (faltando.length)
-    throw new Error(`Cabeçalho do relatório não reconhecido — colunas não encontradas: ${faltando.join(", ")}. O layout do relatório mudou?`);
+    throw Object.assign(new Error(`Cabeçalho do relatório não reconhecido — colunas não encontradas: ${faltando.join(", ")}. O layout do relatório mudou?`), { aviso: true });
 
   marcos.sort((a, b) => ORDEM_CAMPOS.indexOf(a.campo) - ORDEM_CAMPOS.indexOf(b.campo));
 
@@ -775,7 +775,7 @@ function detectarColunasExcel(XLSX, ws, linha, colMax) {
   const obrigatorios = ["sn","filial","valor","solicitante","competente","poder","cpfCnpj","favorecido","destinacao","poderDispendio"];
   const faltando = obrigatorios.filter((campo) => colunas[campo] === undefined);
   if (faltando.length)
-    throw new Error(`Cabeçalho do relatório Excel não reconhecido — colunas não encontradas: ${faltando.join(", ")}. O layout da planilha mudou?`);
+    throw Object.assign(new Error(`Cabeçalho do relatório Excel não reconhecido — colunas não encontradas: ${faltando.join(", ")}. O layout da planilha mudou?`), { aviso: true });
   return { colunas, familia };
 }
 
@@ -810,7 +810,7 @@ function montarComplementoExcel(XLSX, ws, r, colunas, familia) {
 export function parseRelatorioExcel(arrayBuffer, XLSX) {
   const wb = XLSX.read(arrayBuffer, { type: "array", cellDates: false });
   const ws = wb.Sheets[wb.SheetNames[0]];
-  if (!ws || !ws["!ref"]) throw new Error("Planilha vazia ou em formato não reconhecido.");
+  if (!ws || !ws["!ref"]) throw Object.assign(new Error("Planilha vazia ou em formato não reconhecido."), { aviso: true });
   const range = XLSX.utils.decode_range(ws["!ref"]);
   const colMax = range.e.c;
 
