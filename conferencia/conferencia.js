@@ -1250,8 +1250,8 @@ function dividirPorEmpresa(dados) {
  * pedido do Rocha: "está feio, deixe mais organizado, sem os números entre
  * parênteses"). Antes era uma frase corrida "EMPRESA (379 — 12 nova(s)); ...".
  * Agora é uma tabela: uma linha por empresa (maior primeiro), uma coluna por
- * número, traço quando é zero, total no fim. Quem saiu do relatório aparece
- * por S.N numa linha logo abaixo da empresa.
+ * número, traço quando é zero, total no fim. Quais S.N saíram não aparece
+ * aqui (21/10/2026): isso se vê ao conferir a empresa.
  */
 function tabelaResumoEmpresas(lista) {
   const e = (t) => String(t ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -1262,8 +1262,7 @@ function tabelaResumoEmpresas(lista) {
     <tr><td class="ue-nome">${e(r.nome)}</td><td data-r="Solicitações" data-c="Total">${n(r.total)}</td>
       <td data-r="Novas" class="${r.novas ? "ue-novo" : ""}">${n(r.novas)}</td>
       <td data-r="Alteradas" data-c="Alter." class="${r.alteradas ? "ue-alt" : ""}">${n(r.alteradas)}</td>
-      <td data-r="Saíram" class="${r.sumiram.length ? "ue-saiu" : ""}">${n(r.sumiram.length)}</td></tr>
-    ${r.sumiram.length ? `<tr class="ue-sn"><td colspan="5">Saíram do relatório: S.N ${r.sumiram.map(e).join(", ")}</td></tr>` : ""}`).join("");
+      <td data-r="Saíram" class="${r.sumiram.length ? "ue-saiu" : ""}">${n(r.sumiram.length)}</td></tr>`).join("");
   return `<div class="upload-empresas"><table>
     <thead><tr><th>Empresa</th><th>Solicitações</th><th>Novas</th><th>Alteradas</th><th>Saíram</th></tr></thead>
     <tbody>${linhas}</tbody>
@@ -1296,7 +1295,7 @@ async function processarMultiEmpresa(dados) {
   // `removidas` (ver comentário da função), que cada empresa grava junto do
   // lote e a tela de Resumo lista à parte, fora dos totais/validação do
   // relatório atual.
-  let totalSumiram = 0;
+  let atualizadas = 0;   // empresas que já tinham conferência salva (reenvio)
   for (const parte of partes) {
     // mesmo cálculo que um upload de empresa única já fazia antes de salvar
     // (recalcularPoderes) — sem isso, o apontamento de poder só apareceria
@@ -1313,8 +1312,8 @@ async function processarMultiEmpresa(dados) {
       const r = mesclar(JSON.parse(salvoAnterior), parte);
       pareceres = r.pareceres;
       removidas = r.removidas;
-      totalSumiram += r.sumiram.length;
       merge = r;
+      atualizadas++;
     }
     try {
       gravarLote(chave, {
@@ -1332,23 +1331,23 @@ async function processarMultiEmpresa(dados) {
   }
 
   // Pedido do Rocha em 23/09/2026: a mensagem antiga listava o detalhe de
-  // TODAS as empresas na cara, ficando enorme — vira ruído toda vez que se
-  // importa um Excel. Agora o texto principal é curto (dispensável com o
-  // ✕, como o aviso de mesclagem acima) e o detalhe por empresa — que ainda
-  // é informação de auditoria útil (quantas solicitações entraram em cada
-  // uma, e quantas foram mescladas) — fica atrás de "Ver detalhes",
-  // recolhido por padrão em vez de sumir de vez. O aviso de sumidas (linha
-  // abaixo) segue essa mesma regra: uma frase curta no corpo principal —
-  // pra não passar despercebido — com a lista de S.N. específica de cada
-  // empresa só dentro de "Ver detalhes", igual ao resto do detalhe.
-  const avisoSumiram = totalSumiram
-    ? ` ${totalSumiram === 1 ? "1 solicitação que você já tinha conferido saiu" : `${totalSumiram} solicitações que você já tinha conferido saíram`}
-       do relatório — motivo e status ficam guardados em "Removidas do relatório", no Resumo de cada empresa.`
-    : "";
+  // TODAS as empresas na cara; o detalhe por empresa fica atrás de "Ver
+  // detalhes", recolhido. Pedido do Rocha em 21/10/2026: o texto principal
+  // fica só com "Relatório importado com sucesso" + quantas empresas — sem
+  // instrução e sem aviso de solicitação que saiu (isso se vê ao conferir a
+  // empresa, em "Removidas do relatório" no Resumo). Empresa que ainda não
+  // tinha conferência salva conta como "processada"; empresa que já tinha
+  // (o mesmo relatório enviado de novo, ou uma versão mais nova dele) conta
+  // como "atualizada", porque ali houve mescla com os pareceres já dados.
+  const novasEmp = partes.length - atualizadas;
+  const qtd = (n, palavra) => `${n} ${n === 1 ? palavra : palavra.replace(/a$/, "as")}`;
+  const contagem = !atualizadas
+    ? `${qtd(novasEmp, "empresa")} ${novasEmp === 1 ? "processada" : "processadas"}`
+    : !novasEmp
+      ? `${qtd(atualizadas, "empresa")} ${atualizadas === 1 ? "atualizada" : "atualizadas"}`
+      : `${qtd(novasEmp, "empresa")} ${novasEmp === 1 ? "processada" : "processadas"} e ${atualizadas} ${atualizadas === 1 ? "atualizada" : "atualizadas"}`;
   $("upload-msg").innerHTML = `<div class="alerta ok alerta--removivel">
-    <b>Relatório importado com sucesso.</b> ${partes.length}
-    empresa${partes.length > 1 ? "s" : ""} atualizada${partes.length > 1 ? "s" : ""},
-    cada uma na sua própria conferência. Escolha uma abaixo para continuar.${avisoSumiram}
+    <b>Relatório importado com sucesso.</b> ${contagem}.
     <details class="upload-msg__detalhe"><summary>Ver detalhes</summary>${tabelaResumoEmpresas(resumos)}</details>
     <button class="alerta__x" id="btn-fecha-upload-msg" title="Dispensar">✕</button>
   </div>`;
