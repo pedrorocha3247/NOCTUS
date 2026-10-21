@@ -2,26 +2,21 @@
 /* tema claro (16/10/2026): <html data-tema="claro">, escolhido em Configurações > Aparência */
 :root[data-tema=claro]{--color-bg: #f3f5f8;--color-surface: #ffffff;--color-surface-raised: #f1f3f6;--color-border: #d8dde5;--color-green: #0f7f4b;--color-green-hover: #0c6b3f;--color-green-dim: rgba(15, 127, 75, .1);--color-blue: #2563eb;--color-blue-hover: #1d4ed8;--color-blue-dim: rgba(37, 99, 235, .1);--color-text: #111827;--color-text-secondary: #4b5563;--color-text-muted: #6b7280;--color-error: #c62828;--color-error-bg: rgba(198, 40, 40, .07);--color-error-border: rgba(198, 40, 40, .3);--shadow-card: 0 12px 32px rgba(15, 23, 42, .08);color-scheme:light}[data-tema=claro] .login{background:radial-gradient(ellipse at top,#ffffff 0%,var(--color-bg) 55%)}[data-tema=claro] .login__glow{opacity:.22}[data-tema=claro] .ui-button--primary,[data-tema=claro] .ui-checkbox__input:checked+.ui-checkbox__box{color:#fff}[data-tema=claro] .ui-button__spinner{border-color:rgba(255,255,255,.45);border-top-color:#fff}[data-tema=claro] .dashboard__modulo-ico{color:var(--color-text)}
 /* Fundo "aurora reativa" do login (pedido do Rocha, 21/10/2026: "efeito de ondas nas
-   cores, reativo, como o canto superior direito"). As manchas de cor se deslocam e
-   respiram devagar (animação em transform) e, por cima disso, seguem levemente o
-   ponteiro do mouse (propriedade translate, que soma com o transform sem conflito).
-   --mx/--my vêm de um script curto no <head> das páginas; sem ele, só a deriva. */
-.login__glow{width:760px;height:760px;filter:blur(110px);opacity:.3;
+   cores, reativo"; ajustado no mesmo dia: sem "bolas" visíveis). Duas faixas de cor bem
+   maiores que a tela, inclinadas, que se cruzam e se misturam em vez de aparecerem como
+   círculos. Elas deslizam devagar (animação em transform), trocam verde <-> azul como o
+   logotipo e seguem levemente o ponteiro do mouse (propriedade translate, que soma com o
+   transform). --mx/--my vêm de um script curto no <head> das páginas. */
+.login__glow{width:140vw;height:75vh;border-radius:50%;filter:blur(150px);opacity:.3;
   translate:calc(var(--mx,0)*60px) calc(var(--my,0)*45px);transition:translate 1.2s cubic-bezier(.2,.7,.2,1);will-change:transform,translate}
-.login__glow--green{top:-240px;right:-200px;animation:aurora-a 19s ease-in-out infinite alternate,aurora-cor-a 14s ease-in-out infinite}
-.login__glow--blue{bottom:-260px;left:-220px;animation:aurora-b 23s ease-in-out infinite alternate,aurora-cor-b 14s ease-in-out infinite;
+.login__glow--green{top:-40vh;right:-55vw;rotate:-18deg;animation:aurora-a 19s ease-in-out infinite alternate,aurora-cor-a 14s ease-in-out infinite}
+.login__glow--blue{bottom:-40vh;left:-55vw;rotate:-18deg;animation:aurora-b 23s ease-in-out infinite alternate,aurora-cor-b 14s ease-in-out infinite;
   translate:calc(var(--mx,0)*-50px) calc(var(--my,0)*-40px)}
-.login::before{content:"";position:absolute;width:560px;height:560px;border-radius:50%;left:50%;top:55%;margin:-280px 0 0 -280px;
-  background:#24969e;filter:blur(130px);opacity:.16;pointer-events:none;
-  translate:calc(var(--mx,0)*-90px) calc(var(--my,0)*70px);transition:translate 1.6s cubic-bezier(.2,.7,.2,1);
-  animation:aurora-c 27s ease-in-out infinite alternate}
 .login__card{z-index:1}
-@keyframes aurora-a{0%{transform:translate(0,0) scale(1)}35%{transform:translate(-140px,90px) scale(1.12)}70%{transform:translate(-40px,190px) scale(.92)}100%{transform:translate(-200px,40px) scale(1.06)}}
-@keyframes aurora-b{0%{transform:translate(0,0) scale(1)}40%{transform:translate(170px,-110px) scale(1.1)}75%{transform:translate(60px,-200px) scale(.95)}100%{transform:translate(220px,-40px) scale(1.08)}}
-@keyframes aurora-c{0%{transform:translate(-260px,-40px) scale(.9)}50%{transform:translate(220px,-120px) scale(1.15)}100%{transform:translate(80px,120px) scale(1)}}
+@keyframes aurora-a{0%{transform:translate(0,0) scale(1)}50%{transform:translate(-14vw,12vh) scale(1.08)}100%{transform:translate(-6vw,22vh) scale(.95)}}
+@keyframes aurora-b{0%{transform:translate(0,0) scale(1)}50%{transform:translate(14vw,-12vh) scale(1.08)}100%{transform:translate(6vw,-22vh) scale(.95)}}
 /* troca de cor igual ao logotipo: o verde vira azul e o azul vira verde, em sentidos opostos */
 @keyframes aurora-cor-a{0%,100%{background-color:var(--color-green)}50%{background-color:var(--color-blue)}}
 @keyframes aurora-cor-b{0%,100%{background-color:var(--color-blue)}50%{background-color:var(--color-green)}}
 [data-tema=claro] .login__glow{opacity:.15}
-[data-tema=claro] .login::before{opacity:.08}
-@media (prefers-reduced-motion:reduce){.login__glow,.login::before{animation:none;transition:none;translate:none}}
+@media (prefers-reduced-motion:reduce){.login__glow{animation:none;transition:none;translate:none}}
