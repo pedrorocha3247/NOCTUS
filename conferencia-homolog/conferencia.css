@@ -43,6 +43,32 @@ a:hover{color:var(--color-blue-hover)}
 .topo-btn:hover{color:var(--color-text);border-color:var(--color-green);
   background:var(--color-green-dim)}
 
+/* título + "Assistir ao anúncio" logo abaixo dele */
+.topo-titulo{display:flex;flex-direction:column;align-items:flex-start;gap:.3rem;min-width:0}
+.anuncio-link{display:inline-flex;align-items:center;gap:.4rem;padding:0;border:none;background:none;
+  font:inherit;font-size:.8rem;font-weight:600;color:var(--color-green);cursor:pointer;
+  transition:color var(--transition-fast)}
+.anuncio-link svg{flex:none}
+.anuncio-link[hidden]{display:none}
+.anuncio-link:hover{color:var(--color-blue)}
+.anuncio-link:focus-visible{outline:2px solid var(--color-blue);outline-offset:3px;border-radius:4px}
+/* janela do vídeo: fundo escurecido, vídeo vertical do tamanho da tela */
+.anuncio-modal{position:fixed;inset:0;z-index:100;display:flex;align-items:center;justify-content:center;
+  padding:1.25rem;background:rgba(5,7,10,.82);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);
+  animation:anuncio-entra .2s ease}
+.anuncio-modal[hidden]{display:none}
+.anuncio-caixa{position:relative;height:min(88vh,1280px);aspect-ratio:9/16;max-width:100%}
+.anuncio-caixa video{display:block;width:100%;height:100%;border-radius:var(--radius-lg);background:#000;
+  box-shadow:0 30px 90px rgba(0,0,0,.6);border:1px solid var(--color-border)}
+.anuncio-fechar{position:absolute;top:-.6rem;right:-.6rem;z-index:1;width:2.2rem;height:2.2rem;border-radius:50%;
+  border:1px solid var(--color-border);background:var(--color-surface-raised);color:var(--color-text);
+  font-size:1rem;cursor:pointer;display:flex;align-items:center;justify-content:center}
+.anuncio-fechar:hover{border-color:var(--color-green);background:var(--color-green-dim)}
+.anuncio-erro{position:absolute;left:1rem;right:1rem;bottom:1rem;margin:0;padding:.75rem 1rem;border-radius:var(--radius-md);
+  background:var(--color-surface);border:1px solid var(--color-border);color:var(--color-text-secondary);font-size:.85rem;text-align:center}
+@keyframes anuncio-entra{from{opacity:0}to{opacity:1}}
+@media (prefers-reduced-motion:reduce){.anuncio-modal{animation:none}}
+
 main{max-width:900px;margin:0 auto;padding:1.75rem 1.25rem 4rem}
 .cartao{background:var(--color-surface);border:1px solid var(--color-border);
   border-radius:var(--radius-lg);padding:1.5rem;margin-bottom:1.25rem;box-shadow:var(--shadow-card)}
@@ -392,6 +418,7 @@ kbd{background:var(--color-surface-raised);border:1px solid var(--color-border);
   .topo h1{color:#000;font-size:12pt}
   .topo h1 span{color:#555}
   .topo nav{display:none}
+  .anuncio-link,.anuncio-modal{display:none!important}
 
   .cartao{box-shadow:none;border:none;background:#fff;padding:0;margin-bottom:7mm}
   h2{color:#000;font-size:11pt}
