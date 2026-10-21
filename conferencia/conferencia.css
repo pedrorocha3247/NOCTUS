@@ -371,6 +371,19 @@ kbd{background:var(--color-surface-raised);border:1px solid var(--color-border);
 .config-item__acao{display:flex;align-items:center;gap:.5rem;flex-shrink:0}
 .config-item--coluna{flex-direction:column;align-items:stretch;gap:.9rem}
 .config-item--coluna .config-item__texto{max-width:60ch}
+/* botão Ocultar/Mostrar das seções das Configurações */
+.config-item[data-secao]{position:relative}
+.config-item[data-secao] > .config-item__texto{padding-right:6.5rem}
+.cfg-recolher{position:absolute;top:.8rem;right:0;display:inline-flex;align-items:center;gap:.3rem;height:1.9rem;padding:0 .65rem;
+  border:1px solid var(--color-border);border-radius:999px;background:transparent;color:var(--color-text-muted);
+  font:inherit;font-size:.75rem;font-weight:600;cursor:pointer;transition:color .15s,border-color .15s,background .15s}
+.cfg-recolher:hover{color:var(--color-text);border-color:var(--color-text-muted);background:var(--color-surface-raised)}
+.cfg-recolher:focus-visible{outline:2px solid var(--color-blue);outline-offset:2px}
+.cfg-recolher svg{transition:transform .2s}
+.config-item--recolhido .cfg-recolher svg{transform:rotate(-90deg)}
+.config-item--recolhido > :not(.config-item__texto):not(.cfg-recolher){display:none!important}
+.config-item--recolhido > .config-item__texto .sub{display:none}
+.config-item--recolhido{gap:0}
 .otn-form{display:flex;align-items:flex-end;gap:.8rem;flex-wrap:wrap}
 .otn-campo{display:flex;flex-direction:column;gap:.35rem}
 .otn-campo--larga{flex:1 1 20rem;max-width:26rem}
