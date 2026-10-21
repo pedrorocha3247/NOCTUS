@@ -8,8 +8,8 @@
    --mx/--my vêm de um script curto no <head> das páginas; sem ele, só a deriva. */
 .login__glow{width:760px;height:760px;filter:blur(110px);opacity:.3;
   translate:calc(var(--mx,0)*60px) calc(var(--my,0)*45px);transition:translate 1.2s cubic-bezier(.2,.7,.2,1);will-change:transform,translate}
-.login__glow--green{top:-240px;right:-200px;animation:aurora-a 19s ease-in-out infinite alternate}
-.login__glow--blue{bottom:-260px;left:-220px;animation:aurora-b 23s ease-in-out infinite alternate;
+.login__glow--green{top:-240px;right:-200px;animation:aurora-a 19s ease-in-out infinite alternate,aurora-cor-a 14s ease-in-out infinite}
+.login__glow--blue{bottom:-260px;left:-220px;animation:aurora-b 23s ease-in-out infinite alternate,aurora-cor-b 14s ease-in-out infinite;
   translate:calc(var(--mx,0)*-50px) calc(var(--my,0)*-40px)}
 .login::before{content:"";position:absolute;width:560px;height:560px;border-radius:50%;left:50%;top:55%;margin:-280px 0 0 -280px;
   background:#24969e;filter:blur(130px);opacity:.16;pointer-events:none;
@@ -19,6 +19,9 @@
 @keyframes aurora-a{0%{transform:translate(0,0) scale(1)}35%{transform:translate(-140px,90px) scale(1.12)}70%{transform:translate(-40px,190px) scale(.92)}100%{transform:translate(-200px,40px) scale(1.06)}}
 @keyframes aurora-b{0%{transform:translate(0,0) scale(1)}40%{transform:translate(170px,-110px) scale(1.1)}75%{transform:translate(60px,-200px) scale(.95)}100%{transform:translate(220px,-40px) scale(1.08)}}
 @keyframes aurora-c{0%{transform:translate(-260px,-40px) scale(.9)}50%{transform:translate(220px,-120px) scale(1.15)}100%{transform:translate(80px,120px) scale(1)}}
+/* troca de cor igual ao logotipo: o verde vira azul e o azul vira verde, em sentidos opostos */
+@keyframes aurora-cor-a{0%,100%{background-color:var(--color-green)}50%{background-color:var(--color-blue)}}
+@keyframes aurora-cor-b{0%,100%{background-color:var(--color-blue)}50%{background-color:var(--color-green)}}
 [data-tema=claro] .login__glow{opacity:.15}
 [data-tema=claro] .login::before{opacity:.08}
 @media (prefers-reduced-motion:reduce){.login__glow,.login::before{animation:none;transition:none;translate:none}}
