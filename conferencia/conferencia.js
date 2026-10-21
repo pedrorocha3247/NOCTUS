@@ -493,6 +493,15 @@ function irPara(tela) {
   // e o anúncio (exclusivo da Conferência) some. Pedido do Rocha, 21/10/2026.
   const emConfig = tela === "config";
   document.body.classList.toggle("em-config", emConfig);
+  // O anúncio só aparece na tela de envio do relatório: ao abrir uma empresa
+  // (revisão/resumo) ou as Configurações, o link some e, se o vídeo estiver
+  // aberto, ele é pausado e fechado. Pedido do Rocha, 21/10/2026.
+  document.body.classList.toggle("fora-upload", tela !== "upload");
+  if (tela !== "upload") {
+    const mv = $("anuncio-modal"), vv = $("anuncio-video");
+    if (vv && !vv.paused) vv.pause();
+    if (mv) mv.hidden = true;
+  }
   const h1 = document.querySelector(".topo h1");
   if (h1) h1.innerHTML = `${emConfig ? "Configurações" : "Conferência de Pagamentos"} <span>· NOCTUS</span>`;
   document.title = `${emConfig ? "Configurações" : "Conferência de Pagamentos"} — NOCTUS`;
@@ -1237,6 +1246,32 @@ function dividirPorEmpresa(dados) {
 }
 
 /**
+ * "Ver detalhes" da importação com várias empresas (refeito em 21/10/2026, a
+ * pedido do Rocha: "está feio, deixe mais organizado, sem os números entre
+ * parênteses"). Antes era uma frase corrida "EMPRESA (379 — 12 nova(s)); ...".
+ * Agora é uma tabela: uma linha por empresa (maior primeiro), uma coluna por
+ * número, traço quando é zero, total no fim. Quem saiu do relatório aparece
+ * por S.N numa linha logo abaixo da empresa.
+ */
+function tabelaResumoEmpresas(lista) {
+  const e = (t) => String(t ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const n = (v) => (v ? v.toLocaleString("pt-BR") : "—");
+  const ord = [...lista].sort((a, b) => b.total - a.total);
+  const soma = (k) => ord.reduce((s, r) => s + (k === "sumiram" ? r.sumiram.length : r[k]), 0);
+  const linhas = ord.map((r) => `
+    <tr><td class="ue-nome">${e(r.nome)}</td><td data-r="Solicitações" data-c="Total">${n(r.total)}</td>
+      <td data-r="Novas" class="${r.novas ? "ue-novo" : ""}">${n(r.novas)}</td>
+      <td data-r="Alteradas" data-c="Alter." class="${r.alteradas ? "ue-alt" : ""}">${n(r.alteradas)}</td>
+      <td data-r="Saíram" class="${r.sumiram.length ? "ue-saiu" : ""}">${n(r.sumiram.length)}</td></tr>
+    ${r.sumiram.length ? `<tr class="ue-sn"><td colspan="5">Saíram do relatório: S.N ${r.sumiram.map(e).join(", ")}</td></tr>` : ""}`).join("");
+  return `<div class="upload-empresas"><table>
+    <thead><tr><th>Empresa</th><th>Solicitações</th><th>Novas</th><th>Alteradas</th><th>Saíram</th></tr></thead>
+    <tbody>${linhas}</tbody>
+    <tfoot><tr><td class="ue-nome">Total · ${ord.length} empresa${ord.length > 1 ? "s" : ""}</td><td data-r="Solicitações" data-c="Total">${n(soma("total"))}</td><td data-r="Novas">${n(soma("novas"))}</td><td data-r="Alteradas" data-c="Alter.">${n(soma("alteradas"))}</td><td data-r="Saíram">${n(soma("sumiram"))}</td></tr></tfoot>
+  </table></div>`;
+}
+
+/**
  * Excel com várias empresas juntas: cada empresa vira (ou atualiza) a sua
  * PRÓPRIA conferência salva, mesclada com a que já estava em andamento pra
  * ela — mesma lógica de mesclar() de sempre, uma vez por empresa. Não abre
@@ -1273,17 +1308,13 @@ async function processarMultiEmpresa(dados) {
     // reenviado viraria conferência nova na tela, sem os pareceres já dados
     const anteriorObj = await garantirLocal(chave);
     const salvoAnterior = anteriorObj ? JSON.stringify(anteriorObj) : null;
-    let pareceres = {}, removidas = [], notaMerge = "";
+    let pareceres = {}, removidas = [], merge = null;
     if (salvoAnterior) {
       const r = mesclar(JSON.parse(salvoAnterior), parte);
       pareceres = r.pareceres;
       removidas = r.removidas;
       totalSumiram += r.sumiram.length;
-      const partes2 = [r.novas.length && `${r.novas.length} nova(s)`,
-                        r.alteradas.length && `${r.alteradas.length} alterada(s)`,
-                        r.sumiram.length && `${r.sumiram.length} já conferida(s) saiu/saíram do relatório (${r.sumiram.join(", ")})`,
-                       ].filter(Boolean);
-      if (partes2.length) notaMerge = ` — ${partes2.join(", ")}`;
+      merge = r;
     }
     try {
       gravarLote(chave, {
@@ -1291,7 +1322,13 @@ async function processarMultiEmpresa(dados) {
         solicitacoes: parte.solicitacoes, pareceres, removidas, i: 0,
       }, salvoAnterior ? (JSON.parse(salvoAnterior).pareceres || {}) : {});
     } catch (e) { /* modo privado, cota cheia: esta empresa não persiste */ }
-    resumos.push(`${nomeEmpresa(parte.meta)} (${parte.solicitacoes.length}${notaMerge})`);
+    resumos.push({
+      nome: String(nomeEmpresa(parte.meta) || "").replace(/^\s*\d+\s*-\s*/, ""),   // sem o código "15 - "
+      total: parte.solicitacoes.length,
+      novas: merge ? merge.novas.length : 0,
+      alteradas: merge ? merge.alteradas.length : 0,
+      sumiram: merge ? merge.sumiram : [],
+    });
   }
 
   // Pedido do Rocha em 23/09/2026: a mensagem antiga listava o detalhe de
@@ -1305,14 +1342,14 @@ async function processarMultiEmpresa(dados) {
   // pra não passar despercebido — com a lista de S.N. específica de cada
   // empresa só dentro de "Ver detalhes", igual ao resto do detalhe.
   const avisoSumiram = totalSumiram
-    ? ` ${totalSumiram} solicitação(ões) que você já tinha conferido saiu/saíram do relatório — motivo e
-       status ficam guardados em "Removidas do relatório", no Resumo de cada empresa. Ver detalhes.`
+    ? ` ${totalSumiram === 1 ? "1 solicitação que você já tinha conferido saiu" : `${totalSumiram} solicitações que você já tinha conferido saíram`}
+       do relatório — motivo e status ficam guardados em "Removidas do relatório", no Resumo de cada empresa.`
     : "";
   $("upload-msg").innerHTML = `<div class="alerta ok alerta--removivel">
     <b>Relatório importado com sucesso.</b> ${partes.length}
     empresa${partes.length > 1 ? "s" : ""} atualizada${partes.length > 1 ? "s" : ""},
     cada uma na sua própria conferência. Escolha uma abaixo para continuar.${avisoSumiram}
-    <details class="upload-msg__detalhe"><summary>Ver detalhes</summary>${resumos.join("; ")}</details>
+    <details class="upload-msg__detalhe"><summary>Ver detalhes</summary>${tabelaResumoEmpresas(resumos)}</details>
     <button class="alerta__x" id="btn-fecha-upload-msg" title="Dispensar">✕</button>
   </div>`;
   const btnFechaUpload = $("btn-fecha-upload-msg");
