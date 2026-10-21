@@ -489,6 +489,13 @@ function irPara(tela) {
   for (const t of ["upload", "revisao", "resumo", "config"])
     $("tela-" + t).classList.toggle("oculto", t !== tela);
   telaAtual = tela;
+  // Configurações valem para o NOCTUS inteiro: o cabeçalho diz "Configurações"
+  // e o anúncio (exclusivo da Conferência) some. Pedido do Rocha, 21/10/2026.
+  const emConfig = tela === "config";
+  document.body.classList.toggle("em-config", emConfig);
+  const h1 = document.querySelector(".topo h1");
+  if (h1) h1.innerHTML = `${emConfig ? "Configurações" : "Conferência de Pagamentos"} <span>· NOCTUS</span>`;
+  document.title = `${emConfig ? "Configurações" : "Conferência de Pagamentos"} — NOCTUS`;
   if (tela === "upload") renderAvisoOtn();
   const a = $("voltar-topo");
   if (a) {
