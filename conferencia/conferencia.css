@@ -50,7 +50,7 @@ a:hover{color:var(--color-blue-hover)}
   transition:color var(--transition-fast)}
 .anuncio-link svg{flex:none}
 .anuncio-link[hidden]{display:none}
-.em-config .anuncio-link,.em-config .anuncio-modal{display:none!important}   /* anúncio só na Conferência */
+.fora-upload .anuncio-link,.fora-upload .anuncio-modal{display:none!important}   /* anúncio só na tela de envio do relatório */
 .anuncio-link:hover{color:var(--color-blue)}
 .anuncio-link:focus-visible{outline:2px solid var(--color-blue);outline-offset:3px;border-radius:4px}
 /* janela do vídeo: fundo escurecido, vídeo vertical do tamanho da tela */
@@ -120,6 +120,37 @@ h2{font-size:.95rem;font-weight:700;margin:0 0 1rem;letter-spacing:-.01em}
 .upload-msg__detalhe{margin-top:.35rem;font-size:.8rem}
 .upload-msg__detalhe summary{cursor:pointer;opacity:.85;user-select:none}
 .upload-msg__detalhe summary:hover{opacity:1}
+/* tabela "Ver detalhes" da importação com várias empresas */
+.upload-empresas{margin-top:.6rem;overflow-x:auto;border:1px solid var(--color-border);border-radius:var(--radius-md);background:var(--color-surface)}
+.upload-empresas table{width:100%;border-collapse:collapse;font-size:.82rem;color:var(--color-text);font-variant-numeric:tabular-nums}
+.upload-empresas th{font-size:.7rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--color-text-muted);
+  text-align:right;padding:.55rem .75rem;border-bottom:1px solid var(--color-border);white-space:nowrap}
+.upload-empresas td{text-align:right;padding:.5rem .75rem;border-bottom:1px solid var(--color-border);white-space:nowrap;color:var(--color-text-secondary)}
+.upload-empresas th:first-child,.upload-empresas td:first-child{text-align:left}
+.upload-empresas td.ue-nome{color:var(--color-text);font-weight:600;white-space:normal;min-width:14rem}
+.upload-empresas td.ue-novo{color:var(--color-green);font-weight:700}
+.upload-empresas td.ue-alt{color:#6ea0ff;font-weight:700}
+.upload-empresas td.ue-saiu{color:var(--color-error);font-weight:700}
+.upload-empresas tr.ue-sn td{text-align:left;white-space:normal;font-size:.75rem;color:var(--color-error);padding-top:0;border-bottom:1px solid var(--color-border)}
+.upload-empresas tr:has(+ .ue-sn) td{border-bottom:none}
+.upload-empresas tfoot td{font-weight:700;color:var(--color-text);border-bottom:none;background:var(--color-surface-raised)}
+[data-tema="claro"] .upload-empresas td.ue-alt{color:#1d4ed8}
+@media (max-width:560px){ /* celular: cada empresa vira um cartão — nome em cima, números numa faixa embaixo */
+  .upload-empresas table,.upload-empresas tbody,.upload-empresas tfoot{display:block}
+  .upload-empresas thead{display:none}
+  .upload-empresas tr{display:grid;grid-template-columns:repeat(4,1fr);gap:.15rem .5rem;padding:.6rem .75rem;border-bottom:1px solid var(--color-border)}
+  .upload-empresas tr:has(+ .ue-sn){border-bottom:none;padding-bottom:.3rem}
+  .upload-empresas td{display:block;padding:0;border:none;text-align:left}
+  .upload-empresas td.ue-nome{grid-column:1/-1;min-width:0;margin-bottom:.3rem}
+  .upload-empresas td[data-r]{min-width:0}
+  .upload-empresas td[data-r]::before{content:attr(data-r);display:block;font-size:.66rem;font-weight:600;
+    color:var(--color-text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .upload-empresas td[data-c]::before{content:attr(data-c)}
+  .upload-empresas tr.ue-sn{display:block;padding-top:0}
+  .upload-empresas tr.ue-sn td{padding:0}
+  .upload-empresas tfoot tr{border-bottom:none;background:var(--color-surface-raised)}
+  .upload-empresas tfoot td{background:none}
+}
 .apont-ocultos{margin:-.3rem 0 .7rem}
 .apont-ocultos .linkbtn{margin-left:.3rem}
 
