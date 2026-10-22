@@ -58,7 +58,11 @@ a:hover{color:var(--color-blue-hover)}
   padding:1.25rem;background:rgba(5,7,10,.82);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);
   animation:anuncio-entra .2s ease}
 .anuncio-modal[hidden]{display:none}
-.anuncio-caixa{position:relative;height:min(88vh,1280px);aspect-ratio:9/16;max-width:100%}
+.anuncio-caixa{position:relative;aspect-ratio:9/16;max-width:100%;
+  /* altura limitada também pela largura da tela: no celular, a caixa ficava mais alta
+     que o vídeo e sobrava uma faixa preta em cima (print do Rocha, 22/10/2026) */
+  height:min(88vh,1280px,calc((100vw - 2.5rem) * 16 / 9));
+  height:min(88dvh,1280px,calc((100vw - 2.5rem) * 16 / 9))}
 /* versão deitada (16:9) para telas largas: ocupa a largura, sem faixas pretas */
 .anuncio-caixa.h{height:auto;width:min(92vw,calc(86vh * 16 / 9));aspect-ratio:16/9}
 .anuncio-caixa video{display:block;width:100%;height:100%;border-radius:var(--radius-lg);background:#000;
