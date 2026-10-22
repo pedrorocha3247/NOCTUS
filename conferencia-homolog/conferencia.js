@@ -687,6 +687,7 @@ function abrirConfig() {
     fecharPopsOtn();
   }
   if (principal && !secaoOculta("usuarios")) carregarUsuarios();
+  if (principal && $("cfg-copia-msg")) { renderCopiaInfo(); $("cfg-copia-msg").innerHTML = ""; }
   irPara("config");
   if (configAbertaViaHome) {
     const a = $("voltar-topo");
@@ -873,6 +874,69 @@ async function alterarPerfil(username, perfil) {
     return { texto: `Perfil alterado para ${perfil === "admin" ? "Administrador" : "Usuário"}. Vale a partir do próximo login dessa pessoa.` };
   } catch {
     return { erro: true, texto: "Não foi possível alterar o perfil. Verifique a conexão e tente de novo." };
+  }
+}
+
+/**
+ * Cópia de segurança para guardar FORA do Supabase (pedido do Rocha, 22/10/2026).
+ * A função noctus-copia-download (só o administrador principal, conferido no
+ * servidor pelo token) lê as tabelas de TODOS os usuários e devolve um JSON
+ * compactado. O arquivo vai para a pasta de downloads; a data fica nas
+ * preferências (vale em qualquer computador) e, passados 30 dias, a seção avisa.
+ * Por quê: o plano gratuito do Supabase não tem cópia restaurável, e a cópia
+ * semanal automática (schema copia_seguranca) fica no mesmo projeto.
+ */
+const DIAS_AVISO_COPIA = 30;
+function renderCopiaInfo() {
+  const caixa = $("cfg-copia-info");
+  if (!caixa) return;
+  const ultima = lerPrefsLocais().ultimaCopia;
+  const dias = ultima ? Math.floor((Date.now() - ultima) / 864e5) : null;
+  const quando = ultima ? new Date(ultima).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" }) : "";
+  const atrasada = dias === null || dias > DIAS_AVISO_COPIA;
+  caixa.className = "copia-info" + (atrasada ? " copia-info--atrasada" : "");
+  caixa.textContent = ultima
+    ? `Última cópia baixada: ${quando} (${dias === 0 ? "hoje" : dias === 1 ? "há 1 dia" : `há ${dias} dias`}).` +
+      (atrasada ? " Já passou de um mês: vale baixar uma nova." : "")
+    : "Nenhuma cópia baixada ainda.";
+}
+async function baixarCopiaSeguranca() {
+  const btn = $("cfg-copia-baixar"), msg = $("cfg-copia-msg");
+  const rotulo = btn.textContent;
+  btn.disabled = true; btn.textContent = "Gerando cópia…"; msg.innerHTML = "";
+  try {
+    const token = await tokenServidor();
+    if (!token) { msg.innerHTML = `<div class="alerta erro">Sua sessão expirou. Entre de novo no NOCTUS e tente outra vez.</div>`; return; }
+    const r = await fetch(`${SB_URL}/functions/v1/noctus-copia-download`, {
+      method: "POST",
+      headers: { apikey: SB_KEY, Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: "{}",
+    });
+    if (r.status === 401 || r.status === 403) {
+      const j = await r.json().catch(() => ({}));
+      msg.innerHTML = `<div class="alerta erro">${escAnexo(j.error || "Só o administrador principal pode baixar a cópia de segurança.")}</div>`;
+      return;
+    }
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const blob = await r.blob();
+    if (blob.size < 20) throw new Error("cópia vazia");   // gzip vazio/corrompido
+    const nome = (r.headers.get("content-disposition") || "").match(/filename="([^"]+)"/)?.[1] ||
+      `NOCTUS_copia_${new Date().toISOString().slice(0, 10)}.json.gz`;
+    baixar(blob, nome);
+    let resumo = {};
+    try { resumo = JSON.parse(r.headers.get("x-noctus-resumo") || "{}"); } catch { /* sem resumo */ }
+    const n = (k) => Number(resumo[k] || 0).toLocaleString("pt-BR");
+    mudarPrefs({ ultimaCopia: Date.now() });
+    renderCopiaInfo();
+    msg.innerHTML = `<div class="alerta ok"><b>Cópia baixada:</b> ${escAnexo(nome)}
+      (${(blob.size / 1024 / 1024).toFixed(1).replace(".", ",")} MB) com ${n("conferencias_noctus")} conferências,
+      ${n("conferencias_noctus_hist")} registros de auditoria, ${n("anexos_conferencia")} anexos (só o registro)
+      e ${n("usuarios_noctus")} usuários. Mova o arquivo para a pasta da empresa.</div>`;
+  } catch (e) {
+    registrarErro(e, "cópia de segurança (download)");
+    msg.innerHTML = `<div class="alerta erro">${MSG_FALHA_COMUNICACAO}</div>`;
+  } finally {
+    btn.disabled = false; btn.textContent = rotulo;
   }
 }
 
@@ -1070,6 +1134,8 @@ function ligarConfig() {
   // histórico, e dá pra desfazer só regravando o valor certo.
   $("cfg-padrao").onclick = () => salvarOtn(OTN_PADRAO, $("cfg-mes").value || mesAtual());
   $("cfg-usuarios-atualizar").onclick = () => carregarUsuarios();
+  const btnCopia = $("cfg-copia-baixar");   // defensivo: o JS pode ir ao ar antes do HTML
+  if (btnCopia) btnCopia.onclick = () => baixarCopiaSeguranca();
   document.querySelectorAll("#cfg-aparencia [data-tema]").forEach((b) => {
     b.onclick = () => { mudarPrefs({ tema: b.dataset.tema }); renderAparencia(); };
   });
@@ -3528,6 +3594,7 @@ let estadoSync = "";
  */
 const CHAVE_OCULTAR_OK = "noctus.aviso-salvo-oculto";
 const CHAVE_SECOES_OCULTAS = "noctus.cfg.secoes-ocultas";
+const CHAVE_ULTIMA_COPIA = "noctus.copia.ultima";   // data da última cópia de segurança baixada
 const avisoOkOculto = () => localStorage.getItem(CHAVE_OCULTAR_OK) === "1";
 let avisoDispensado = null;
 
@@ -3605,6 +3672,7 @@ const lerPrefsLocais = () => ({
   avisoSalvoOculto: avisoOkOculto(),
   anuncioVisto: localStorage.getItem(chaveAnuncioVisto()) === "1",
   secoesOcultas: lerSecoesOcultas(),
+  ultimaCopia: Number(localStorage.getItem(CHAVE_ULTIMA_COPIA)) || 0,
   em: Number(localStorage.getItem(CHAVE_PREFS_EM)) || 0,
 });
 function lerSecoesOcultas() {
@@ -3619,6 +3687,7 @@ function gravarPrefsLocais(p) {
     if (typeof p.avisoSalvoOculto === "boolean") localStorage.setItem(CHAVE_OCULTAR_OK, p.avisoSalvoOculto ? "1" : "0");
     if (p.anuncioVisto === true) localStorage.setItem(chaveAnuncioVisto(), "1");   // visto nunca volta a "não visto"
     if (Array.isArray(p.secoesOcultas)) localStorage.setItem(CHAVE_SECOES_OCULTAS, JSON.stringify(p.secoesOcultas.slice(0, 20)));
+    if (Number(p.ultimaCopia) > 0) localStorage.setItem(CHAVE_ULTIMA_COPIA, String(Number(p.ultimaCopia)));
     if (p.em) localStorage.setItem(CHAVE_PREFS_EM, String(p.em));
   } catch { /* sem espaço */ }
   aplicarTema(lerPrefsLocais().tema);
@@ -3650,7 +3719,7 @@ async function sincronizarPrefs() {
     if (linha?.prefs && (Number(linha.prefs.em) || 0) >= local.em) {
       gravarPrefsLocais(linha.prefs);   // a do servidor é a mais recente (ex.: mudou em outro computador)
       if (estadoSync) statusSync(estadoSync);
-      if (telaAtual === "config") renderAparencia();
+      if (telaAtual === "config") { renderAparencia(); renderCopiaInfo(); }
     } else {
       await enviarPrefs();   // a deste navegador é mais recente (ou o servidor ainda não tem): sobe
     }
