@@ -20,6 +20,8 @@ const STATUS = [
   { valor: "Aprovado",                   id: "aprovado"   },
   { valor: "Aguardando esclarecimentos", id: "aguardando" },
   { valor: "Recusado",                   id: "recusado"   },
+  // 22/10/2026, pedido do Rocha: quarto status, em amarelo (atalho 4)
+  { valor: "Complementar",               id: "complementar" },
 ];
 /**
  * Nomes usados em versões anteriores, para não perder os pareceres já dados.
@@ -1698,7 +1700,7 @@ const statusDoItem = (s) => estado.pareceres[s.sn]?.status || SEM_STATUS;
 const CHAVE_FILTRO_ST = "noctus.filtro-status";
 const filtroStatusAberto = () => localStorage.getItem(CHAVE_FILTRO_ST) !== "oculto";
 const CLASSE_STATUS = { Aprovado: "g", "Aguardando esclarecimentos": "b",
-                        Recusado: "v", [SEM_STATUS]: "n" };
+                        Recusado: "v", Complementar: "y", [SEM_STATUS]: "n" };
 
 let filtro = null;         // forma de pagamento (ou apontadas)
 let filtroStatus = null;   // status do parecer, combinado com o filtro acima
@@ -1979,6 +1981,8 @@ const COR_STATUS = {
   "Aprovado": "FF15803D",
   "Aguardando esclarecimentos": "FF1D4ED8",
   "Recusado": "FFB91C1C",
+  // amarelo escuro: legível no branco e diferente do âmbar dos apontamentos (9C6500)
+  "Complementar": "FFA16207",
 };
 
 /**
