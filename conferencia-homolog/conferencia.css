@@ -9,6 +9,10 @@
   --color-text:#f2f4f8; --color-text-secondary:#9aa3b2; --color-text-muted:#5f6877;
   --color-error:#e5534b; --color-error-bg:rgba(229,83,75,.1); --color-error-border:rgba(229,83,75,.35);
   --color-warn:#d9a441; --color-warn-bg:rgba(217,164,65,.1); --color-warn-border:rgba(217,164,65,.35);
+  /* status "Complementar" (22/10/2026): amarelo puro, mais claro e menos
+     alaranjado que o âmbar dos apontamentos, para não confundir os dois */
+  --color-yellow:#facc15; --color-yellow-hover:#fde047; --color-yellow-dim:rgba(250,204,21,.12);
+  --color-yellow-border:rgba(250,204,21,.45);
   --font-sans:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
   --radius-sm:6px; --radius-md:10px; --radius-lg:16px;
   --shadow-card:0 24px 60px rgba(0,0,0,.45);
@@ -169,6 +173,8 @@ h2{font-size:.95rem;font-weight:700;margin:0 0 1rem;letter-spacing:-.01em}
 #st-aguardando:checked+label b{color:rgba(255,255,255,.6)}
 #st-recusado:checked+label{background:var(--color-error);color:#fff}
 #st-recusado:checked+label b{color:rgba(255,255,255,.6)}
+#st-complementar:checked+label{background:var(--color-yellow);color:#1f1a03}
+#st-complementar:checked+label b{color:rgba(31,26,3,.55)}
 
 textarea{width:100%;min-height:82px;padding:.7rem .8rem;background:var(--color-surface-raised);
   border:1px solid var(--color-border);border-radius:var(--radius-md);color:var(--color-text);
@@ -223,9 +229,12 @@ kbd{background:var(--color-surface-raised);border:1px solid var(--color-border);
 .status-card--b b{color:var(--color-blue-hover)}
 .status-card--v{border-left-color:var(--color-error)}
 .status-card--v b{color:var(--color-error)}
+.status-card--y{border-left-color:var(--color-yellow)}
+.status-card--y b{color:var(--color-yellow-hover)}
 .status-card--n b{color:var(--color-text-muted)}
 .pilula.g b{color:var(--color-green)} .pilula.a b{color:var(--color-warn)}
 .pilula.b b{color:var(--color-blue)} .pilula.v b{color:var(--color-error)}
+.pilula.y b{color:var(--color-yellow)}
 
 /* tabela */
 .cabecalho-recolhivel{display:flex;align-items:center;justify-content:space-between;
@@ -269,6 +278,8 @@ kbd{background:var(--color-surface-raised);border:1px solid var(--color-border);
   border:1px solid var(--color-blue)}
 .marca--recusado{background:var(--color-error-bg);color:var(--color-error);
   border:1px solid var(--color-error-border)}
+.marca--complementar{background:var(--color-yellow-dim);color:var(--color-yellow-hover);
+  border:1px solid var(--color-yellow-border)}
 
 /* cartão "Removidas do relatório" — mesmo componente .parecer da lista ativa,
    mas sem o hover/cursor de "abrir" (não dá pra reabrir uma solicitação que
@@ -351,6 +362,8 @@ kbd{background:var(--color-surface-raised);border:1px solid var(--color-border);
   background:var(--color-blue-dim)}
 .chip-st--v.on{border-color:var(--color-error-border);color:var(--color-error);
   background:var(--color-error-bg)}
+.chip-st--y.on{border-color:var(--color-yellow-border);color:var(--color-yellow-hover);
+  background:var(--color-yellow-dim)}
 .chip-st--n.on{border-color:var(--color-text-muted);color:var(--color-text);
   background:var(--color-surface-raised)}
 /* configurações */
@@ -480,7 +493,7 @@ kbd{background:var(--color-surface-raised);border:1px solid var(--color-border);
   .resumo-totais span{color:#555}
   .resumo-totais b{color:#000;font-size:13pt}
 
-  .resumo-status{grid-template-columns:repeat(4,1fr);gap:2mm;break-inside:avoid}
+  .resumo-status{grid-template-columns:repeat(5,1fr);gap:2mm;break-inside:avoid}
   .status-card{background:#fff;border:1px solid #999;border-left-width:2.5pt;padding:2mm 2.5mm}
   .status-card b{color:#000;font-size:12pt}
   .status-card span{color:#333;font-size:8pt}
@@ -488,6 +501,7 @@ kbd{background:var(--color-surface-raised);border:1px solid var(--color-border);
   .status-card--g{border-left-color:#15803d} .status-card--g b{color:#15803d}
   .status-card--b{border-left-color:#1d4ed8} .status-card--b b{color:#1d4ed8}
   .status-card--v{border-left-color:#b91c1c} .status-card--v b{color:#b91c1c}
+  .status-card--y{border-left-color:#a16207} .status-card--y b{color:#a16207}
   .status-card--n{border-left-color:#888} .status-card--n b{color:#666}
 
   /* a lista sai impressa mesmo estando recolhida na tela */
@@ -508,6 +522,7 @@ kbd{background:var(--color-surface-raised);border:1px solid var(--color-border);
   .marca--aprovado{border-color:#15803d;color:#15803d!important}
   .marca--aguardando{border-color:#1d4ed8;color:#1d4ed8!important}
   .marca--recusado{border-color:#b91c1c;color:#b91c1c!important}
+  .marca--complementar{border-color:#a16207;color:#a16207!important}
   .marca--nenhum{border-color:#999;color:#666!important;font-weight:400}
 }
 /* lista de usuários cadastrados (Configurações, só admin) */
@@ -553,6 +568,8 @@ kbd{background:var(--color-surface-raised);border:1px solid var(--color-border);
   --color-text:#111827; --color-text-secondary:#4b5563; --color-text-muted:#6b7280;
   --color-error:#c62828; --color-error-bg:rgba(198,40,40,.07); --color-error-border:rgba(198,40,40,.3);
   --color-warn:#9a6700; --color-warn-bg:rgba(154,103,0,.08); --color-warn-border:rgba(154,103,0,.3);
+  --color-yellow:#ca8a04; --color-yellow-hover:#a16207; --color-yellow-dim:rgba(202,138,4,.12);
+  --color-yellow-border:rgba(161,98,7,.45);
   --shadow-card:0 12px 32px rgba(15,23,42,.08);
   color-scheme:light;
 }
@@ -560,6 +577,9 @@ kbd{background:var(--color-surface-raised);border:1px solid var(--color-border);
   [data-tema="claro"] .status input:checked+label,
   [data-tema="claro"] .botao.primario{color:#fff}
   [data-tema="claro"] .status input:checked+label b{color:rgba(255,255,255,.7)}
+  /* amarelo com texto branco não tem contraste: no claro o botão fica amarelo vivo com texto escuro */
+  [data-tema="claro"] #st-complementar:checked+label{background:#facc15;color:#1f1a03}
+  [data-tema="claro"] #st-complementar:checked+label b{color:rgba(31,26,3,.55)}
   [data-tema="claro"] .chip--apontada{border-color:rgba(154,103,0,.45);color:#9a6700}
   [data-tema="claro"] .chip--apontada.on{border-color:#9a6700;color:#7a5200;background:rgba(154,103,0,.10)}
   [data-tema="claro"] .parecer__apontamento{color:#7a5200;background:rgba(154,103,0,.08);border-color:rgba(154,103,0,.35)}
