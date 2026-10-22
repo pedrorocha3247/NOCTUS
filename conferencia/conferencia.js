@@ -1796,6 +1796,28 @@ function definirListaCompleta(aberta) {
   if (aberta) listasAbertas.add(chaveDaLista());
   else listasAbertas.delete(chaveDaLista());
 }
+/**
+ * Correção de 22/10/2026 (pedido do Rocha: "se eu busco em uma empresa, essa
+ * busca continua em outras empresas"). `busca`, `filtro` (forma de pagamento)
+ * e `filtroStatus` eram variáveis únicas da página: o texto digitado no Resumo
+ * da MOMENTUM continuava valendo ao abrir a SLIM — a lista vinha filtrada por
+ * algo que o conferente nem tinha digitado ali (e um filtro "BOLETO" numa
+ * empresa sem boleto deixava a lista vazia). Agora os três ficam guardados POR
+ * CONFERÊNCIA, no mesmo padrão do "Mostrar todas": empresa nova abre sem busca
+ * e sem filtro; voltar à anterior traz de volta o que estava nela. Só na
+ * memória da página (F5 limpa tudo).
+ */
+const filtrosPorConferencia = new Map();
+let chaveDosFiltros = "";
+function sincronizarFiltros() {
+  const nova = chaveDaLista();
+  if (nova === chaveDosFiltros) return;
+  if (chaveDosFiltros) filtrosPorConferencia.set(chaveDosFiltros, { filtro, filtroStatus, busca });
+  ({ filtro, filtroStatus, busca } = filtrosPorConferencia.get(nova) || { filtro: null, filtroStatus: null, busca: "" });
+  chaveDosFiltros = nova;
+  const campo = $("res-busca");
+  if (campo) campo.value = busca;
+}
 let ultimoAberto = null;   // cartão de onde o conferidor foi aberto
 /**
  * Pedido do Rocha em 07/10/2026: ao entrar numa empresa, o Resumo abria lá
@@ -1810,6 +1832,7 @@ let ultimoAberto = null;   // cartão de onde o conferidor foi aberto
 let voltarAoCartao = false;
 
 function mostrarResumo() {
+  sincronizarFiltros();   // busca e filtros são de cada conferência
   irPara("resumo");
   $("res-data").textContent =
     "· " + textoPeriodo(estado.dados.meta) +
