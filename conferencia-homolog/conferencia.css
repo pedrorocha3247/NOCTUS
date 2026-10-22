@@ -395,6 +395,10 @@ kbd{background:var(--color-surface-raised);border:1px solid var(--color-border);
 .otn-campo .mes-pick{width:11rem}
 .otn-campo--larga .mes-pick{width:100%}
 .otn-salvar{width:auto;padding:0 1.2rem;height:2.5rem}
+/* Configurações > Cópia de segurança (22/10/2026): data da última cópia baixada;
+   passados 30 dias (ou nunca baixada) fica em âmbar, como lembrete */
+.copia-info{font-size:.83rem;color:var(--color-text-secondary);margin:.35rem 0 .2rem}
+.copia-info--atrasada{color:var(--color-warn)}
 /* campos do OTN: texto centralizado na horizontal e na vertical */
 .otn-form .otn-input{height:2.5rem;box-sizing:border-box;padding:0 .8rem;text-align:center;
   display:flex;align-items:center;justify-content:center}
