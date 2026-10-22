@@ -575,13 +575,15 @@ function ligarAnuncio() {
     fetch(fontes[k], { method: "HEAD", cache: "no-store" })
       .then((r) => { if (r.ok) { existe[k] = true; btn.hidden = false; } }).catch(() => {});
   }
-  // Pedido do Rocha (22/10/2026): vídeo mais lento. 0,8 = 20% mais devagar
-  // (24 s viram ~30 s); o navegador mantém o tom da trilha (preservesPitch).
-  // Para ajustar, troque só este número (1 = velocidade original).
-  const VELOCIDADE_ANUNCIO = 0.8;
+  // Pedido do Rocha (22/10/2026): vídeo mais lento. O anúncio novo (31 s, com o
+  // logotipo na abertura) já vem 20% mais lento no próprio arquivo e toca a 1×.
+  // O antigo (24 s) toca a 0,8× — vale enquanto o arquivo novo não sobe ao
+  // GitHub. O navegador mantém o tom da trilha (preservesPitch).
+  const VELOCIDADE_ANUNCIO_ANTIGO = 0.8;
   const aplicarVelocidade = () => {
-    video.defaultPlaybackRate = VELOCIDADE_ANUNCIO;
-    video.playbackRate = VELOCIDADE_ANUNCIO;
+    const vel = video.duration && video.duration < 28 ? VELOCIDADE_ANUNCIO_ANTIGO : 1;
+    video.defaultPlaybackRate = vel;
+    video.playbackRate = vel;
     video.preservesPitch = true;
   };
   aplicarVelocidade();
