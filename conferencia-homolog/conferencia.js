@@ -506,7 +506,7 @@ function irPara(tela) {
   }
   const h1 = document.querySelector(".topo h1");
   if (h1) h1.innerHTML = `${emConfig ? "Configurações" : "Conferência de Pagamentos"} <span>· NOCTUS</span>`;
-  document.title = `${emConfig ? "Configurações" : "Conferência de Pagamentos"} — Noctus`;
+  document.title = `${emConfig ? "Configurações" : "Conferência de Pagamentos"} — NOCTUS`;
   if (tela === "upload") renderAvisoOtn();
   const a = $("voltar-topo");
   if (a) {
