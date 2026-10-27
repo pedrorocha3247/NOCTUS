@@ -25,3 +25,4 @@
 [data-tema=claro] .login::before{opacity:.16}
 [data-tema=claro] .login::after{opacity:.1;mix-blend-mode:normal}
 @media (prefers-reduced-motion:reduce){.login::before,.login::after{animation:none;transition:none;translate:none}}
+/* 27/10/2026: Configura\00e7\00f5es e Sair viraram botoes de icone (engrenagem e porta) */.icone-botao{width:2.5rem;height:2.5rem;padding:0;flex:0 0 auto}.icone-botao svg{display:block}.icone-botao:hover:not(:disabled) svg{transform:rotate(30deg)}.icone-botao svg{transition:transform .25s ease}.icone-botao--sair:hover:not(:disabled){color:var(--color-error);border-color:var(--color-error)}.icone-botao--sair:hover:not(:disabled) svg{transform:translate(2px)}.icone-botao:focus-visible{outline:2px solid var(--color-blue);outline-offset:2px}@media (prefers-reduced-motion:reduce){.icone-botao svg{transition:none}}
