@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Controle Bancário — NOCTUS</title>
+<meta name="description" content="Módulo Controle Bancário do NOCTUS, em desenvolvimento.">
+<meta name="robots" content="noindex">
+<link rel="icon" type="image/svg+xml" href="../favicon.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script>
+  /* tema escolhido em Configurações > Aparência; aplicado antes de desenhar a página */
+  try { if (localStorage.getItem("noctus.tema") === "claro") document.documentElement.dataset.tema = "claro"; } catch (e) {}
+</script>
+<script src="../noctus-erros.js"></script>
+<style>
+/* Página provisória (29/10/2026): o card do painel já leva para cá; o módulo
+   de verdade está em controle-bancario-homolog/ e substitui esta página quando
+   for para produção. Tokens iguais aos da conferencia.css. */
+:root{
+  --color-bg:#0a0c10; --color-surface:#12151c; --color-surface-raised:#181c25; --color-border:#262b36;
+  --color-green:#1db06b; --color-green-dim:rgba(29,176,107,.12);
+  --color-blue:#2f6feb; --color-blue-dim:rgba(47,111,235,.12);
+  --color-text:#f2f4f8; --color-text-secondary:#9aa3b2;
+  --font-sans:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --radius-md:10px; --radius-lg:16px; --transition-fast:.16s ease;
+  color-scheme:dark;
+}
+:root[data-tema="claro"]{
+  --color-bg:#f3f5f8; --color-surface:#ffffff; --color-surface-raised:#f1f3f6; --color-border:#d8dde5;
+  --color-green:#0f7f4b; --color-green-dim:rgba(15,127,75,.10);
+  --color-blue:#2563eb; --color-blue-dim:rgba(37,99,235,.10);
+  --color-text:#111827; --color-text-secondary:#4b5563;
+  color-scheme:light;
+}
+*,*::before,*::after{box-sizing:border-box}
+body{margin:0;min-height:100vh;display:flex;flex-direction:column;background:var(--color-bg);color:var(--color-text);
+  font-family:var(--font-sans);font-size:15px;line-height:1.5;-webkit-font-smoothing:antialiased}
+.topo{border-bottom:1px solid var(--color-border);background:var(--color-surface);padding:.9rem 1.5rem;
+  display:flex;align-items:center;justify-content:space-between;gap:1rem}
+.topo h1{font-size:1rem;font-weight:700;margin:0;letter-spacing:-.01em}
+.topo h1 span{color:var(--color-text-secondary);font-weight:500}
+.voltar{display:inline-flex;align-items:center;gap:.4rem;padding:.45rem .85rem;border:1px solid var(--color-border);
+  border-radius:var(--radius-md);background:var(--color-surface-raised);color:var(--color-text-secondary);
+  text-decoration:none;font-weight:600;white-space:nowrap;transition:all var(--transition-fast)}
+.voltar:hover{color:var(--color-text);border-color:var(--color-green);background:var(--color-green-dim)}
+main{flex:1;display:flex;align-items:center;justify-content:center;padding:2rem 1rem}
+.aviso{width:100%;max-width:460px;text-align:center;background:var(--color-surface);border:1px solid var(--color-border);
+  border-radius:var(--radius-lg);padding:2.5rem 1.75rem}
+.aviso .ico{width:64px;height:64px;margin:0 auto 1.25rem;border-radius:18px;display:flex;align-items:center;justify-content:center;
+  color:#fff;background:linear-gradient(135deg,#2f6feb,#1db06b)}
+.aviso h2{margin:0 0 .5rem;font-size:1.3rem;font-weight:700;letter-spacing:-.01em}
+.aviso p{margin:0 auto 1.6rem;max-width:340px;color:var(--color-text-secondary)}
+.aviso .voltar{min-height:44px;padding:0 1.1rem}
+@media (max-width:560px){.topo{padding:.8rem 1rem}.aviso{padding:2rem 1.25rem}}
+</style>
+</head>
+<body>
+
+<header class="topo">
+  <h1>Controle Bancário <span>· NOCTUS</span></h1>
+  <a class="voltar" href="../#/">Voltar</a>
+</header>
+
+<main>
+  <section class="aviso" role="status">
+    <div class="ico" aria-hidden="true">
+      <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9.5 12 4l9 5.5"/><path d="M5.5 10.5v7M10 10.5v7M14 10.5v7M18.5 10.5v7"/><path d="M3 20h18"/></svg>
+    </div>
+    <h2>Módulo em desenvolvimento</h2>
+    <p>O Controle Bancário ainda está sendo construído. Assim que estiver pronto, ele abre por aqui.</p>
+    <a class="voltar" href="../#/">Voltar ao início</a>
+  </section>
+</main>
+
+</body>
+</html>
