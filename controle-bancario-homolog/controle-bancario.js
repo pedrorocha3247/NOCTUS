@@ -406,37 +406,49 @@ function desenharResumo(reg) {
   }
   $("resumo-aviso").innerHTML = avisos.join("");
 
+  // 30/10: todas as empresas à vista, sem rolagem: o quadro cresce até a largura da tela e,
+  // se ainda não couber, as empresas quebram em faixas (cada faixa com Fluxo/Relatório/Diferença).
   const cols = res.cols;
-  const cab = cols.map((c) => `<th scope="col"${c.semFluxo ? ' class="sem-fluxo"' : ""}>${esc(c.empresa)}` +
-    `${c.semFluxo ? '<span class="marca">sem fluxo</span>' : ""}</th>`).join("");
-  const linha = (rotulo, classe, valor) =>
-    `<tr class="${classe}"><th scope="row">${rotulo}</th>${cols.map(valor).join("")}</tr>`;
-  $("resumo-tabela").innerHTML =
-    `<thead><tr><th scope="col">Empresa</th>${cab}</tr></thead><tbody>` +
-    linha("Fluxo", "fluxo", (c) => `<td>${esc(contabil(c.fluxo))}</td>`) +
-    linha("Relatório", "relatorio", (c) => `<td>${c.relatorio == null ? "—" : esc(contabil(c.relatorio))}</td>`) +
-    linha("Diferença", "diferenca", (c) => c.diferenca == null ? "<td>—</td>"
-      : `<td><span class="dif ${sinal(c.diferenca) || "zero"}"${dica(c.diferenca) ? ` title="${dica(c.diferenca)}"` : ""}>${esc(contabil(c.diferenca))}</span></td>`) +
-    "</tbody>";
-  ajustarSetasEmpresas();
+  const celular = ehCelular();
+  const ROTULO = celular ? 96 : 120, COL = celular ? 104 : 112, SOBRA = 24;
+  const pai = cartao.parentElement.clientWidth - (parseFloat(getComputedStyle(cartao.parentElement).paddingLeft) || 0)
+    - (parseFloat(getComputedStyle(cartao.parentElement).paddingRight) || 0);
+  const tela = document.documentElement.clientWidth - 32;
+  const precisa = ROTULO + cols.length * COL + SOBRA;
+  const larg = Math.max(pai, Math.min(precisa, tela));
+  cartao.style.width = larg > pai ? `${larg}px` : "";
+  cartao.style.maxWidth = larg > pai ? "none" : "";
+  cartao.style.marginLeft = larg > pai ? `${Math.round((pai - larg) / 2)}px` : "";
+  cartao.style.setProperty("--resumo-rotulo", `${ROTULO}px`);
+  const porLinha = Math.max(1, Math.floor((larg - ROTULO - SOBRA) / COL));
+  const faixas = Math.max(1, Math.ceil(cols.length / porLinha));
+  const porFaixa = Math.ceil(cols.length / faixas);   // faixas equilibradas
+  const tabela = (grupo, i) => {
+    const vazias = "<td></td>".repeat(porFaixa - grupo.length);
+    const cab = grupo.map((c) => `<th scope="col"${c.semFluxo ? ' class="sem-fluxo"' : ""} title="${esc(c.empresa)}">${esc(c.empresa)}` +
+      `${c.semFluxo ? '<span class="marca">sem fluxo</span>' : ""}</th>`).join("") + "<th></th>".repeat(porFaixa - grupo.length);
+    const linha = (rotulo, classe, valor) =>
+      `<tr class="${classe}"><th scope="row">${rotulo}</th>${grupo.map(valor).join("")}${vazias}</tr>`;
+    return `<table class="tabela-resumo"${i === 0 ? ' id="resumo-tabela"' : ""} aria-label="Fluxo × Relatório de débito por empresa` +
+      `${faixas > 1 ? ` (parte ${i + 1} de ${faixas})` : ""}"><colgroup><col class="rotulo"></colgroup>` +
+      `<thead><tr><th scope="col">Empresa</th>${cab}</tr></thead><tbody>` +
+      linha("Fluxo", "fluxo", (c) => `<td>${esc(contabil(c.fluxo))}</td>`) +
+      linha("Relatório", "relatorio", (c) => `<td>${c.relatorio == null ? "—" : esc(contabil(c.relatorio))}</td>`) +
+      linha("Diferença", "diferenca", (c) => c.diferenca == null ? "<td>—</td>"
+        : `<td><span class="dif ${sinal(c.diferenca) || "zero"}"${dica(c.diferenca) ? ` title="${dica(c.diferenca)}"` : ""}>${esc(contabil(c.diferenca))}</span></td>`) +
+      "</tbody></table>";
+  };
+  const grupos = [];
+  for (let i = 0; i < cols.length; i += porFaixa) grupos.push(cols.slice(i, i + porFaixa));
+  const caixa = $("resumo-caixa") || $("resumo-tabela").parentElement;
+  caixa.innerHTML = grupos.map(tabela).join("");
 }
 
-/** Setas nas pontas da linha das empresas: só aparecem quando a tabela não cabe; somem na ponta. */
-function ajustarSetasEmpresas() {
-  const caixa = $("resumo-caixa"), ant = $("emp-ant"), prox = $("emp-prox");
-  if (!caixa || !ant || !prox) return;
-  const sobra = caixa.scrollWidth - caixa.clientWidth;
-  const rotulo = caixa.querySelector("thead th");
-  ant.style.left = `${(rotulo ? rotulo.offsetWidth : 0) + 6}px`;   // logo depois da coluna fixa "EMPRESA"
-  ant.classList.toggle("oculto", sobra <= 1 || caixa.scrollLeft <= 1);
-  prox.classList.toggle("oculto", sobra <= 1 || caixa.scrollLeft >= sobra - 1);
-}
-function andarEmpresas(sentido) {
-  const caixa = $("resumo-caixa");
-  if (!caixa) return;
-  const rotulo = caixa.querySelector("thead th");
-  const passo = Math.max(120, caixa.clientWidth - (rotulo ? rotulo.offsetWidth : 0) - 40);
-  caixa.scrollBy({ left: sentido * passo, behavior: "smooth" });
+/** Ao mudar o tamanho da janela, refaz a tabela resumo (largura do quadro e faixas). */
+let refazerResumo = null;
+function aoRedimensionar() {
+  clearTimeout(refazerResumo);
+  refazerResumo = setTimeout(() => { const reg = estado.atual && estado.datas.get(estado.atual); if (reg) desenharResumo(reg); }, 120);
 }
 
 /* ------------------------------------------------------------ calendário (modelo A, 30/10) */
@@ -509,10 +521,7 @@ function ligarTela() {
   const ligar = (id, fn) => { const el = $(id); if (el) el.addEventListener("click", fn); };
   ligar("datas-ant", () => { estado.inicioDatas = Math.max(0, estado.inicioDatas - visiveis()); desenharDatasSemMudar(); });
   ligar("datas-prox", () => { estado.inicioDatas += visiveis(); desenharDatasSemMudar(); });
-  ligar("emp-ant", () => andarEmpresas(-1));
-  ligar("emp-prox", () => andarEmpresas(1));
-  $("resumo-caixa")?.addEventListener("scroll", ajustarSetasEmpresas, { passive: true });
-  window.addEventListener("resize", ajustarSetasEmpresas);
+  window.addEventListener("resize", aoRedimensionar);
   ligar("btn-cal", () => abrirCalendario());
   ligar("cal-ant", () => andarMes(-1));
   ligar("cal-prox", () => andarMes(1));
