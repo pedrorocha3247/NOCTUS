@@ -1,0 +1,107 @@
+/* Controle Bancário — NOCTUS. Tokens iguais aos da conferencia.css (troque lá e aqui juntos). */
+:root{
+  --color-bg:#0a0c10; --color-surface:#12151c; --color-surface-raised:#181c25; --color-border:#262b36;
+  --color-green:#1db06b; --color-green-hover:#23c97c; --color-green-dim:rgba(29,176,107,.12);
+  --color-blue:#2f6feb; --color-blue-hover:#4a83f0; --color-blue-dim:rgba(47,111,235,.12);
+  --color-text:#f2f4f8; --color-text-secondary:#9aa3b2; --color-text-muted:#5f6877;
+  --color-error:#e5534b; --color-error-bg:rgba(229,83,75,.1); --color-error-border:rgba(229,83,75,.35);
+  --color-warn:#d9a441; --color-warn-bg:rgba(217,164,65,.1); --color-warn-border:rgba(217,164,65,.35);
+  /* tabela no padrão do Excel do Rocha: cabeçalho azul, "Saídas" em laranja-claro */
+  --cb-cab-fundo:#1d4fc4; --cb-cab-texto:#ffffff; --cb-cab-saidas:#ffd2b0;
+  --font-sans:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --radius-sm:6px; --radius-md:10px; --radius-lg:16px;
+  --shadow-card:0 24px 60px rgba(0,0,0,.45);
+  --transition-fast:.16s ease;
+  color-scheme:dark;
+}
+:root[data-tema="claro"]{
+  --color-bg:#f3f5f8; --color-surface:#ffffff; --color-surface-raised:#f1f3f6; --color-border:#d8dde5;
+  --color-green:#0f7f4b; --color-green-hover:#0c6b3f; --color-green-dim:rgba(15,127,75,.10);
+  --color-blue:#2563eb; --color-blue-hover:#1d4ed8; --color-blue-dim:rgba(37,99,235,.10);
+  --color-text:#111827; --color-text-secondary:#4b5563; --color-text-muted:#6b7280;
+  --color-error:#c62828; --color-error-bg:rgba(198,40,40,.07); --color-error-border:rgba(198,40,40,.3);
+  --color-warn:#9a6700; --color-warn-bg:rgba(154,103,0,.08); --color-warn-border:rgba(154,103,0,.3);
+  --shadow-card:0 12px 32px rgba(15,23,42,.08);
+  color-scheme:light;
+}
+*,*::before,*::after{box-sizing:border-box}
+body{margin:0;min-height:100vh;display:flex;flex-direction:column;background:var(--color-bg);color:var(--color-text);
+  font-family:var(--font-sans);font-size:15px;line-height:1.5;-webkit-font-smoothing:antialiased}
+a{color:var(--color-blue);text-decoration:none}
+a:hover{color:var(--color-blue-hover)}
+.oculto{display:none!important}
+
+.topo{border-bottom:1px solid var(--color-border);background:var(--color-surface);padding:.9rem 1.5rem;
+  display:flex;align-items:center;justify-content:space-between;gap:1rem}
+.topo h1{font-size:1rem;font-weight:700;margin:0;letter-spacing:-.01em}
+.topo h1 span{color:var(--color-text-muted);font-weight:500}
+.voltar{display:inline-flex;align-items:center;gap:.4rem;padding:.45rem .85rem;border:1px solid var(--color-border);
+  border-radius:var(--radius-md);background:var(--color-surface-raised);color:var(--color-text-secondary);
+  text-decoration:none;font-weight:600;white-space:nowrap;transition:all var(--transition-fast)}
+.voltar:hover{color:var(--color-text);border-color:var(--color-green);background:var(--color-green-dim)}
+
+/* página "Módulo em desenvolvimento" (todos menos o administrador principal) */
+main.centro{flex:1;display:flex;align-items:center;justify-content:center;padding:2rem 1rem}
+.aviso{width:100%;max-width:460px;text-align:center;background:var(--color-surface);border:1px solid var(--color-border);
+  border-radius:var(--radius-lg);padding:2.5rem 1.75rem}
+.aviso .ico{width:64px;height:64px;margin:0 auto 1.25rem;border-radius:18px;display:flex;align-items:center;justify-content:center;
+  color:#fff;background:linear-gradient(135deg,#2f6feb,#1db06b)}
+.aviso h2{margin:0 0 .5rem;font-size:1.3rem;font-weight:700;letter-spacing:-.01em}
+.aviso p{margin:0 auto 1.6rem;max-width:340px;color:var(--color-text-secondary)}
+.aviso .voltar{min-height:44px;padding:0 1.1rem}
+
+/* módulo */
+#modulo{width:100%;max-width:900px;margin:0 auto;padding:1.75rem 1.25rem 4rem}
+.cartao{background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius-lg);
+  padding:1.5rem;margin-bottom:1.25rem;box-shadow:var(--shadow-card)}
+h2{font-size:.95rem;font-weight:700;margin:0 0 1rem;letter-spacing:-.01em}
+.sub{color:var(--color-text-secondary);font-size:.85rem;margin:0}
+
+.solta{border:1.5px dashed var(--color-border);border-radius:var(--radius-md);padding:2.5rem 1.5rem;text-align:center;
+  cursor:pointer;transition:border-color var(--transition-fast),background-color var(--transition-fast)}
+.solta:hover,.solta.ativa{border-color:var(--color-green);background:var(--color-green-dim)}
+.solta:focus-visible{outline:2px solid var(--color-blue);outline-offset:3px}
+.solta.lendo{opacity:.6;pointer-events:none}
+.solta strong{display:block;font-size:.95rem;margin-bottom:.3rem}
+.solta span{color:var(--color-text-secondary);font-size:.85rem}
+
+#upload-msg:not(:empty){margin-top:1rem}
+.alerta{border-radius:var(--radius-md);padding:.7rem .9rem;font-size:.85rem;margin-bottom:.7rem;
+  background:var(--color-warn-bg);border:1px solid var(--color-warn-border);color:var(--color-warn)}
+.alerta:last-child{margin-bottom:0}
+.alerta.erro{background:var(--color-error-bg);border-color:var(--color-error-border);color:var(--color-error)}
+.alerta.ok{background:var(--color-green-dim);border-color:var(--color-green);color:var(--color-green-hover)}
+
+.tabela-cabecalho{display:flex;justify-content:space-between;align-items:flex-start;gap:1rem;flex-wrap:wrap;margin-bottom:1rem}
+.tabela-cabecalho h2{margin-bottom:.2rem}
+
+/* escolha da data (quando há mais de uma importada) */
+.datas{display:flex;flex-wrap:wrap;gap:.45rem;margin-bottom:1rem}
+.data-btn{min-height:36px;padding:.35rem .8rem;border:1px solid var(--color-border);border-radius:999px;
+  background:var(--color-surface-raised);color:var(--color-text-secondary);font:inherit;font-size:.82rem;font-weight:600;
+  font-variant-numeric:tabular-nums;cursor:pointer;transition:all var(--transition-fast)}
+.data-btn:hover{color:var(--color-text);border-color:var(--color-text-muted)}
+.data-btn[aria-pressed="true"]{background:var(--color-blue-dim);border-color:var(--color-blue);color:var(--color-text)}
+.data-btn:focus-visible{outline:2px solid var(--color-blue);outline-offset:2px}
+
+/* tabela de empresas — mesmo desenho do modelo em Excel */
+.tabela-caixa{overflow-x:auto;max-width:560px}
+.tabela-empresas{width:100%;border-collapse:collapse;font-size:.92rem}
+.tabela-empresas th,.tabela-empresas td{border:1px solid var(--color-border);padding:.5rem .75rem}
+.tabela-empresas thead th{background:var(--cb-cab-fundo);color:var(--cb-cab-texto);font-weight:700;text-align:center;
+  border-color:var(--cb-cab-fundo)}
+.tabela-empresas thead th.saidas{color:var(--cb-cab-saidas)}
+.tabela-empresas tbody td{font-weight:700;text-transform:uppercase;letter-spacing:.01em}
+.tabela-empresas td.saidas{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap;width:40%}
+.tabela-empresas tbody tr:hover td{background:var(--color-surface-raised)}
+.tabela-empresas td.vazio{font-weight:500;text-transform:none;color:var(--color-text-secondary);text-align:center}
+
+@media (max-width:560px){
+  .topo{padding:.8rem 1rem}
+  .aviso{padding:2rem 1.25rem}
+  #modulo{padding:1.25rem .9rem 3rem}
+  .cartao{padding:1.1rem}
+  .solta{padding:2rem 1rem}
+  .tabela-empresas{font-size:.86rem}
+  .tabela-empresas th,.tabela-empresas td{padding:.45rem .55rem}
+}
