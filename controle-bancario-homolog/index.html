@@ -4,32 +4,71 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Controle Bancário — NOCTUS</title>
-<meta name="description" content="Pagamentos programados, contas bancárias e fechamento do dia, a partir da planilha Financeiro.">
+<meta name="description" content="Módulo Controle Bancário do NOCTUS.">
 <meta name="robots" content="noindex">
 <link rel="icon" type="image/svg+xml" href="../favicon.svg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script>
+  /* tema escolhido em Configurações > Aparência; aplicado antes de desenhar a página */
+  try { if (localStorage.getItem("noctus.tema") === "claro") document.documentElement.dataset.tema = "claro"; } catch (e) {}
+</script>
+<script src="../noctus-erros.js"></script>
 <link rel="stylesheet" href="./controle-bancario.css">
 </head>
 <body>
 
 <header class="topo">
-  <h1>Controle Bancário <span class="selo">homologação</span></h1>
-  <a class="voltar" href="../#/">← Voltar</a>
+  <h1>Controle Bancário <span>· NOCTUS</span></h1>
+  <a class="voltar" href="../#/">Voltar</a>
 </header>
 
-<nav class="abas" id="abas" role="tablist" aria-label="Seções">
-  <button class="aba" role="tab" data-aba="hoje">Hoje</button>
-  <button class="aba" role="tab" data-aba="calendario">Calendário</button>
-  <button class="aba" role="tab" data-aba="contas">Contas</button>
-  <button class="aba" role="tab" data-aba="fechamento">Fechamento do dia</button>
-  <button class="aba" role="tab" data-aba="planilha">Planilha <span class="ponto-alerta oculto" id="n-planilha"></span></button>
-</nav>
+<!-- Enquanto o módulo está em construção (30/10/2026), só o administrador principal
+     vê o conteúdo; todos os demais continuam vendo esta mensagem. -->
+<main id="em-desenvolvimento" class="centro">
+  <section class="aviso" role="status">
+    <div class="ico" aria-hidden="true">
+      <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9.5 12 4l9 5.5"/><path d="M5.5 10.5v7M10 10.5v7M14 10.5v7M18.5 10.5v7"/><path d="M3 20h18"/></svg>
+    </div>
+    <h2>Módulo em desenvolvimento</h2>
+    <p>O Controle Bancário ainda está sendo construído. Assim que estiver pronto, ele abre por aqui.</p>
+    <a class="voltar" href="../#/">Voltar ao início</a>
+  </section>
+</main>
 
-<main id="app" aria-live="polite"><p class="sub">Carregando…</p></main>
+<main id="modulo" class="oculto">
+  <section class="cartao">
+    <h2>Relatório de fluxo de caixa</h2>
+    <div class="solta" id="solta" role="button" tabindex="0" aria-controls="arquivo">
+      <strong>Clique para escolher o relatório de fluxo de caixa (Excel)</strong>
+      <span>ou arraste o arquivo para cá</span>
+      <input type="file" id="arquivo"
+             accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" hidden>
+    </div>
+    <div id="upload-msg" aria-live="polite"></div>
+  </section>
 
-<input type="file" id="arquivo-planilha" accept=".xlsx,.xlsm,.xls" hidden>
+  <section class="cartao oculto" id="cartao-tabela" aria-labelledby="tabela-titulo">
+    <div class="tabela-cabecalho">
+      <div>
+        <h2 id="tabela-titulo">Empresas com saídas</h2>
+        <p class="sub" id="tabela-resumo"></p>
+      </div>
+    </div>
+    <div class="datas oculto" id="datas" role="group" aria-label="Data do relatório"></div>
+    <div id="tabela-aviso" aria-live="polite"></div>
+    <div class="tabela-caixa">
+      <table class="tabela-empresas" id="tabela-empresas">
+        <thead>
+          <tr><th scope="col">Empresa</th><th scope="col" class="saidas">Saídas</th></tr>
+        </thead>
+        <tbody id="tabela-corpo"></tbody>
+      </table>
+    </div>
+  </section>
+</main>
+
 <script type="module" src="./controle-bancario.js"></script>
 </body>
 </html>
