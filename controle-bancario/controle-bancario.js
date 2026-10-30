@@ -9,13 +9,20 @@
  *
  * Dados: cada data importada vira uma linha no servidor (usuário + data);
  * reimportar a mesma data substitui a anterior. Aparece em qualquer computador.
+ *
+ * Parte 2 (30/10/2026): o mesmo campo aceita o relatório de débito em conta (SCK).
+ * O arquivo é reconhecido pelo conteúdo; o total de cada empresa vai para
+ * controle_bancario_debito_noctus e a tabela resumo compara Fluxo × Relatório
+ * da mesma data (ver debito.js).
  */
 import { lerFluxoCaixa, linhasDoExcel } from "./planilha.js";
+import { ehRelatorioDebito, lerDebito, montarResumo } from "./debito.js";
 
 const SB_URL = "https://wyyqjlwzphlhnplmirlg.supabase.co";
 const SB_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind5eXFqbHd6cGhsaG5wbG1pcmxnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQyMTU0MDcsImV4cCI6MjA5OTc5MTQwN30.8TEY_BZAm7P9vwuU0Eh5jzw6rgzcPOpTXk_gBU5FQJc";
 const CHAVE_SESSAO = "sipep.session";
 const TABELA = "controle_bancario_noctus";
+const TABELA_DEBITO = "controle_bancario_debito_noctus";
 const ADMIN_USUARIO = "pedro rocha";
 const ADMIN_EMAIL = "pedro.rocha@momentum.com.br";
 const TAMANHO_MAXIMO = 10 * 1024 * 1024;   // 10 MB: o relatório real tem ~10 KB
@@ -29,6 +36,8 @@ const $ = (id) => document.getElementById(id);
 const esc = (t) => String(t ?? "").replace(/[&<>"']/g, (c) =>
   ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const moeda = (v) => Number(v || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+/** formato contábil da planilha do Rocha: zero vira "-" */
+const contabil = (v) => (Math.abs(Number(v || 0)) < 0.005 ? "-" : moeda(v));
 const rotuloIso = (iso) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`;
 const plural = (n, um, varios) => `${n} ${n === 1 ? um : varios}`;
 const listaE = (xs) => (xs.length <= 1 ? xs.join("") : `${xs.slice(0, -1).join(", ")} e ${xs[xs.length - 1]}`);
@@ -124,6 +133,7 @@ async function servidor(caminho, opcoes = {}, tentouRenovar = false) {
 /* ------------------------------------------------------------ estado */
 const estado = {
   datas: new Map(),   // iso → { iso, empresas, arquivo, atualizado_em, naoSalvo }
+  debitos: new Map(), // iso → { iso, empresas: [{ codigo, empresa, total, qtd, soma, confere }], arquivo, naoSalvo }
   atual: null,        // iso escolhida
 };
 
@@ -139,6 +149,29 @@ async function carregarSalvos() {
   // abre na data importada por último
   const ultima = linhas.slice().sort((a, b) => String(b.atualizado_em).localeCompare(String(a.atualizado_em)))[0];
   estado.atual = ultima ? ultima.data_relatorio : null;
+}
+
+async function carregarDebitos() {
+  const r = await servidor(`${TABELA_DEBITO}?select=data_relatorio,empresas,arquivo,atualizado_em` +
+    `&order=data_relatorio.desc&limit=60`);
+  estado.debitos.clear();
+  for (const l of await r.json()) {
+    estado.debitos.set(l.data_relatorio, { iso: l.data_relatorio, empresas: Array.isArray(l.empresas) ? l.empresas : [],
+      arquivo: l.arquivo, atualizado_em: l.atualizado_em });
+  }
+}
+
+async function salvarDebito(deb, arquivo) {
+  const token = await tokenServidor();
+  const uid = token && idDoToken(token);
+  if (!uid) throw new Error("sem-login");
+  const r = await servidor(`${TABELA_DEBITO}?on_conflict=auth_user_id,data_relatorio`, {
+    method: "POST",
+    headers: { Prefer: "resolution=merge-duplicates,return=representation" },
+    body: JSON.stringify([{ auth_user_id: uid, data_relatorio: deb.iso, empresas: deb.empresas,
+      arquivo: String(arquivo || "").slice(0, 200) }]),
+  });
+  return r.json();
 }
 
 async function salvar(datas, arquivo) {
@@ -180,11 +213,11 @@ async function importar(arquivo) {
   const solta = $("solta");
   const nome = String(arquivo?.name || "");
   if (!/\.(xlsx|xls)$/i.test(nome)) {
-    msg.innerHTML = alerta("erro", "Envie o relatório de fluxo de caixa em Excel (.xlsx).");
+    msg.innerHTML = alerta("erro", "Envie o relatório em Excel (.xlsx): fluxo de caixa ou débito em conta.");
     return;
   }
   if (arquivo.size > TAMANHO_MAXIMO) {
-    msg.innerHTML = alerta("erro", "O arquivo passa de 10 MB, muito maior que o relatório de fluxo de caixa. Confira se escolheu o arquivo certo.");
+    msg.innerHTML = alerta("erro", "O arquivo passa de 10 MB, muito maior que os relatórios do Controle Bancário. Confira se escolheu o arquivo certo.");
     return;
   }
 
@@ -193,7 +226,13 @@ async function importar(arquivo) {
   let resultado;
   try {
     await carregarSheetJS();
-    resultado = lerFluxoCaixa(linhasDoExcel(window.XLSX, await arquivo.arrayBuffer()));
+    const buffer = await arquivo.arrayBuffer();
+    const linhas = linhasDoExcel(window.XLSX, buffer);
+    if (ehRelatorioDebito(linhas)) {
+      const deb = lerDebito(window.XLSX, buffer);
+      return await importarDebito(deb, nome);
+    }
+    resultado = lerFluxoCaixa(linhas);
   } catch (e) {
     solta.classList.remove("lendo");
     msg.innerHTML = alerta("erro", esc(msgErro(e, "Não consegui ler o relatório", MSG_FALHA_GERAL)));
@@ -235,10 +274,43 @@ async function importar(arquivo) {
   msg.innerHTML = alerta("ok", esc(texto));
 }
 
+/** Grava o relatório de débito já lido e mostra a comparação da mesma data. */
+async function importarDebito(deb, nome) {
+  const msg = $("upload-msg");
+  const jaExistia = estado.debitos.has(deb.iso) && !estado.debitos.get(deb.iso).naoSalvo;
+  let erroSalvar = null;
+  try {
+    const salvos = await salvarDebito(deb, nome);
+    const l = salvos[0];
+    estado.debitos.set(l.data_relatorio, { iso: l.data_relatorio, empresas: l.empresas, arquivo: l.arquivo, atualizado_em: l.atualizado_em });
+  } catch (e) {
+    erroSalvar = e;
+    estado.debitos.set(deb.iso, { iso: deb.iso, empresas: deb.empresas, arquivo: nome, naoSalvo: true });
+  }
+  $("solta").classList.remove("lendo");
+  const temFluxo = estado.datas.has(deb.iso);
+  if (temFluxo) estado.atual = deb.iso;
+  desenhar();
+
+  if (erroSalvar) {
+    msg.innerHTML = alerta("erro", esc(msgErro(erroSalvar, "O relatório de débito foi lido, mas não consegui salvá-lo no servidor")));
+    return;
+  }
+  const empresas = deb.empresas.filter((e) => e.codigo);
+  let texto = `Relatório de débito de ${deb.rotulo} ${jaExistia ? "atualizado" : "importado"}: ` +
+    `${plural(empresas.length, "empresa", "empresas")}, total R$ ${moeda(deb.total)}.`;
+  if (!temFluxo) texto += ` Ainda não há fluxo de caixa de ${deb.rotulo}; a comparação aparece quando ele for importado.`;
+  msg.innerHTML = alerta("ok", esc(texto));
+}
+
 /* ------------------------------------------------------------ tela */
 function desenhar() {
   const cartao = $("cartao-tabela");
-  if (!estado.atual || !estado.datas.has(estado.atual)) { cartao.classList.add("oculto"); return; }
+  if (!estado.atual || !estado.datas.has(estado.atual)) {
+    cartao.classList.add("oculto");
+    $("cartao-resumo")?.classList.add("oculto");
+    return;
+  }
   cartao.classList.remove("oculto");
 
   // escolha da data: só aparece quando há mais de uma
@@ -268,6 +340,51 @@ function desenhar() {
   $("tabela-corpo").innerHTML = empresas.length
     ? empresas.map((e) => `<tr><td>${esc(e.empresa)}</td><td class="saidas">${esc(moeda(e.saidas))}</td></tr>`).join("")
     : `<tr><td colspan="2" class="vazio">Nenhuma empresa com saída em ${esc(rotuloIso(reg.iso))}.</td></tr>`;
+  desenharResumo(reg);
+}
+
+/** Tabela resumo (modelo B): Fluxo × Relatório de débito da data aberta. */
+function desenharResumo(reg) {
+  const cartao = $("cartao-resumo");
+  if (!cartao) return;   // defensivo: na publicação o JS vai ao ar antes do HTML
+  cartao.classList.remove("oculto");
+  const deb = estado.debitos.get(reg.iso) || null;
+  const res = montarResumo(reg.empresas || [], deb);
+  const sinal = (v) => (v == null || v === 0 ? "" : v > 0 ? "pos" : "neg");
+  const dica = (v) => (v > 0 ? "Fluxo maior que o relatório de débito" : v < 0 ? "Relatório de débito maior que o fluxo" : "");
+
+  $("resumo-titulo").textContent = `Fluxo em ${rotuloIso(reg.iso)}`;
+  $("resumo-fluxo").textContent = `R$ ${moeda(res.total.fluxo)}`;
+  $("resumo-relatorio").textContent = deb ? `R$ ${moeda(res.total.relatorio)}` : "—";
+  const dif = $("resumo-diferenca");
+  dif.textContent = deb ? `R$ ${moeda(res.total.diferenca)}` : "—";
+  dif.className = `kpi-val ${sinal(res.total.diferenca)}`;
+  $("resumo-situacao").textContent = !deb ? "Aguardando o relatório de débito"
+    : res.divergencias ? plural(res.divergencias, "divergência", "divergências") : "Sem divergência";
+
+  const avisos = [];
+  if (!deb) avisos.push(alerta("", `Importe o relatório de débito em conta de ${esc(rotuloIso(reg.iso))} para preencher a linha Relatório.`));
+  else if (deb.naoSalvo) avisos.push(alerta("erro", "O relatório de débito desta data ainda não foi salvo no servidor. Importe de novo quando a comunicação voltar."));
+  for (const a of res.avisos) {
+    if (a.tipo === "semFluxo") avisos.push(alerta("", `${esc(a.empresa)} tem débito de R$ ${esc(moeda(a.total))} no relatório, sem valor no fluxo de ${esc(rotuloIso(reg.iso))}.`));
+    if (a.tipo === "semConta") avisos.push(alerta("erro", `R$ ${esc(moeda(a.total))} debitados em conta bancária não cadastrada no NOCTUS: não entraram em nenhuma empresa. Confira o relatório.`));
+    if (a.tipo === "naoConfere") avisos.push(alerta("erro", `${esc(a.empresa)}: o total impresso no relatório (R$ ${esc(moeda(a.total))}) não bate com a soma das solicitações (R$ ${esc(moeda(a.soma))}). Confira o relatório.`));
+    if (a.tipo === "semCodigo") avisos.push(alerta("", `${esc(a.empresa)} está no fluxo, mas não tem código de empresa cadastrado: não dá para comparar com o relatório.`));
+  }
+  $("resumo-aviso").innerHTML = avisos.join("");
+
+  const cols = res.cols;
+  const cab = cols.map((c) => `<th scope="col"${c.semFluxo ? ' class="sem-fluxo"' : ""}>${esc(c.empresa)}` +
+    `${c.semFluxo ? '<span class="marca">sem fluxo</span>' : ""}</th>`).join("");
+  const linha = (rotulo, classe, valor) =>
+    `<tr class="${classe}"><th scope="row">${rotulo}</th>${cols.map(valor).join("")}</tr>`;
+  $("resumo-tabela").innerHTML =
+    `<thead><tr><th scope="col">Empresa</th>${cab}</tr></thead><tbody>` +
+    linha("Fluxo", "fluxo", (c) => `<td>${esc(contabil(c.fluxo))}</td>`) +
+    linha("Relatório", "relatorio", (c) => `<td>${c.relatorio == null ? "—" : esc(contabil(c.relatorio))}</td>`) +
+    linha("Diferença", "diferenca", (c) => c.diferenca == null ? "<td>—</td>"
+      : `<td><span class="dif ${sinal(c.diferenca) || "zero"}"${dica(c.diferenca) ? ` title="${dica(c.diferenca)}"` : ""}>${esc(contabil(c.diferenca))}</span></td>`) +
+    "</tbody>";
 }
 
 function ligarTela() {
@@ -318,10 +435,16 @@ async function iniciar() {
   }
   try {
     await carregarSalvos();
-    desenhar();
   } catch (e) {
     $("upload-msg").innerHTML = alerta("erro", esc(msgErro(e, "Não consegui carregar os relatórios já importados")));
+    return;
   }
+  try {
+    await carregarDebitos();
+  } catch (e) {
+    $("upload-msg").innerHTML = alerta("erro", esc(msgErro(e, "Não consegui carregar os relatórios de débito já importados")));
+  }
+  desenhar();
 }
 
 iniciar().catch((e) => registrarErro(e, "abertura do Controle Bancário"));
