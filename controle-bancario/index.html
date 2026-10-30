@@ -49,19 +49,21 @@
     <div id="upload-msg" aria-live="polite"></div>
   </section>
 
-  <section class="cartao oculto" id="cartao-tabela" aria-labelledby="tabela-titulo">
-    <div class="tabela-cabecalho">
+  <!-- tabela no modelo C (escolhido pelo Rocha em 30/10/2026): total em destaque, linhas alternadas, cartão compacto -->
+  <section class="cartao cartao-tabela oculto" id="cartao-tabela" aria-labelledby="tabela-titulo">
+    <div class="tabela-topo">
       <div>
-        <h2 id="tabela-titulo">Empresas com saídas</h2>
-        <p class="sub" id="tabela-resumo"></p>
+        <h2 id="tabela-titulo">Saídas</h2>
+        <p class="tabela-total" id="tabela-total"></p>
       </div>
+      <span class="pilula" id="tabela-qtd"></span>
     </div>
     <div class="datas oculto" id="datas" role="group" aria-label="Data do relatório"></div>
     <div id="tabela-aviso" aria-live="polite"></div>
     <div class="tabela-caixa">
       <table class="tabela-empresas" id="tabela-empresas">
         <thead>
-          <tr><th scope="col">Empresa</th><th scope="col" class="saidas">Saídas</th></tr>
+          <tr><th scope="col">Empresa</th><th scope="col" class="saidas">Saídas (R$)</th></tr>
         </thead>
         <tbody id="tabela-corpo"></tbody>
       </table>
