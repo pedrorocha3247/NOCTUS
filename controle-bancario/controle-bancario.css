@@ -95,8 +95,24 @@ h2{font-size:.95rem;font-weight:700;margin:0 0 1rem;letter-spacing:-.01em}
 #tabela-aviso:not(:empty){padding:.9rem 1.5rem 0}
 
 /* escolha da data (quando há mais de uma importada) */
-.datas{display:flex;flex-wrap:wrap;gap:.45rem;padding:.9rem 1.5rem 0}
-.data-btn{min-height:36px;padding:.35rem .8rem;border:1px solid var(--color-border);border-radius:999px;
+/* datas: no máximo 5 visíveis, setas para andar (30/10) */
+.datas-nav{display:flex;align-items:center;gap:.4rem;padding:.9rem 1.5rem 0}
+.datas{display:flex;flex-wrap:nowrap;gap:.45rem;flex:1;min-width:0;overflow:hidden}
+.seta{flex:none;width:36px;height:36px;display:inline-flex;align-items:center;justify-content:center;padding:0;
+  border:1px solid var(--color-border);border-radius:999px;background:var(--color-surface-raised);color:var(--color-text);
+  cursor:pointer;transition:all var(--transition-fast)}
+.seta:hover:not(:disabled){border-color:var(--color-blue);background:var(--color-blue-dim)}
+.seta:disabled{opacity:.35;cursor:default}
+.seta:focus-visible{outline:2px solid var(--color-blue);outline-offset:2px}
+/* calendário acima de "N empresas" */
+.topo-dir{display:flex;flex-direction:column;align-items:flex-end;gap:.5rem;position:relative}
+.btn-cal{width:36px;height:36px;display:inline-flex;align-items:center;justify-content:center;padding:0;
+  border:1px solid var(--color-border);border-radius:var(--radius-md);background:var(--color-surface-raised);
+  color:var(--color-text-secondary);cursor:pointer;transition:all var(--transition-fast)}
+.btn-cal:hover{color:var(--color-text);border-color:var(--color-blue);background:var(--color-blue-dim)}
+.btn-cal:focus-visible{outline:2px solid var(--color-blue);outline-offset:2px}
+.data-cal{position:absolute;top:0;right:0;width:36px;height:36px;opacity:0;pointer-events:none;border:0;padding:0}
+.data-btn{flex:1 1 0;min-width:0;max-width:5.5rem;min-height:36px;padding:.35rem .3rem;text-align:center;border:1px solid var(--color-border);border-radius:999px;
   background:var(--color-surface-raised);color:var(--color-text-secondary);font:inherit;font-size:.82rem;font-weight:600;
   font-variant-numeric:tabular-nums;cursor:pointer;transition:all var(--transition-fast)}
 .data-btn:hover{color:var(--color-text);border-color:var(--color-text-muted)}
@@ -105,7 +121,7 @@ h2{font-size:.95rem;font-weight:700;margin:0 0 1rem;letter-spacing:-.01em}
 
 /* tabela de empresas (modelo C): sem grade, cabeçalho em faixa, linhas alternadas */
 .tabela-caixa{overflow-x:auto}
-.datas:not(.oculto) ~ .tabela-caixa,#tabela-aviso:not(:empty) ~ .tabela-caixa{margin-top:.9rem}
+.datas-nav:not(.oculto) ~ .tabela-caixa,#tabela-aviso:not(:empty) ~ .tabela-caixa{margin-top:.9rem}
 .tabela-empresas{width:100%;border-collapse:collapse;font-size:.9rem}
 .tabela-empresas th,.tabela-empresas td{padding:.7rem 1.5rem;text-align:left}
 .tabela-empresas th + th,.tabela-empresas td + td{padding-left:2rem}
@@ -128,8 +144,12 @@ h2{font-size:.95rem;font-weight:700;margin:0 0 1rem;letter-spacing:-.01em}
 .kpi-val.neg{color:var(--color-error)}
 .pilula-neutra{margin-left:auto;background:var(--color-surface-raised);color:var(--color-text)}
 #resumo-aviso:not(:empty){padding:.9rem 1.5rem 0}
-.resumo-caixa{overflow-x:auto}
-#resumo-aviso:not(:empty) ~ .resumo-caixa{margin-top:.9rem}
+/* setas nas pontas da linha das empresas (30/10): aparecem só quando há rolagem */
+.resumo-nav{position:relative}
+#resumo-aviso:not(:empty) ~ .resumo-nav{margin-top:.9rem}
+.resumo-caixa{overflow-x:auto;scroll-behavior:smooth}
+.seta-emp{position:absolute;top:.35rem;z-index:3;width:30px;height:30px;box-shadow:0 2px 8px rgba(0,0,0,.25)}
+.seta-emp#emp-prox{right:.5rem}
 .tabela-resumo{min-width:100%;border-collapse:collapse;font-size:.88rem}
 .tabela-resumo th,.tabela-resumo td{padding:.7rem .75rem;text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
 .tabela-resumo th:last-child,.tabela-resumo td:last-child{padding-right:1.5rem}
@@ -145,7 +165,7 @@ h2{font-size:.95rem;font-weight:700;margin:0 0 1rem;letter-spacing:-.01em}
 .dif{display:inline-block;padding:.2rem .45rem;border-radius:var(--radius-sm);font-weight:700}
 .dif.pos{color:var(--cb-pos);background:var(--cb-pos-fundo)}
 .dif.neg{color:var(--color-error);background:var(--color-error-bg)}
-.dif.zero{color:var(--color-text-secondary);font-weight:600}
+.dif.zero{color:var(--color-green-hover);font-weight:800}   /* bate: hífen verde (30/10) */
 
 @media (max-width:560px){
   .topo{padding:.8rem 1rem}
@@ -156,7 +176,10 @@ h2{font-size:.95rem;font-weight:700;margin:0 0 1rem;letter-spacing:-.01em}
   .solta{padding:2rem 1rem}
   .tabela-topo{padding:1.1rem}
   .tabela-total{font-size:1.55rem}
-  .datas,#tabela-aviso:not(:empty){padding-left:1.1rem;padding-right:1.1rem}
+  .datas-nav,#tabela-aviso:not(:empty){padding-left:1.1rem;padding-right:1.1rem}
+  .datas-nav .seta{width:32px;height:32px}
+  .datas{gap:.3rem}
+  .data-btn{font-size:.74rem;padding:.3rem .1rem;min-height:34px}
   .tabela-empresas{font-size:.86rem}
   .tabela-empresas th,.tabela-empresas td{padding:.6rem 1.1rem}
   .tabela-empresas th + th,.tabela-empresas td + td{padding-left:1.5rem}
