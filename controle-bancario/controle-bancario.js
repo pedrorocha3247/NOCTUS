@@ -131,10 +131,12 @@ async function servidor(caminho, opcoes = {}, tentouRenovar = false) {
 }
 
 /* ------------------------------------------------------------ estado */
+const DATAS_VISIVEIS = 5;   // pedido do Rocha (30/10): no máximo 5 dias por vez, setas para andar
 const estado = {
   datas: new Map(),   // iso → { iso, empresas, arquivo, atualizado_em, naoSalvo }
   debitos: new Map(), // iso → { iso, empresas: [{ codigo, empresa, total, qtd, soma, confere }], arquivo, naoSalvo }
   atual: null,        // iso escolhida
+  inicioDatas: 0,     // 1ª data visível na faixa de datas (no máximo DATAS_VISIVEIS por vez)
 };
 
 async function carregarSalvos() {
@@ -304,6 +306,24 @@ async function importarDebito(deb, nome) {
 }
 
 /* ------------------------------------------------------------ tela */
+/** Anda a faixa de datas sem trocar a data aberta. */
+function botaoData(iso) {
+  const longo = rotuloIso(iso);
+  return `<button type="button" class="data-btn" data-iso="${esc(iso)}" aria-pressed="${iso === estado.atual}" ` +
+    `aria-label="${esc(longo)}" title="${esc(longo)}">${esc(longo.slice(0, 5))}</button>`;
+}
+function desenharDatasSemMudar() {
+  const isos = [...estado.datas.keys()].sort();
+  const maxInicio = Math.max(0, isos.length - DATAS_VISIVEIS);
+  const ini = Math.min(Math.max(0, estado.inicioDatas), maxInicio);
+  estado.inicioDatas = ini;
+  $("datas").innerHTML = isos.slice(ini, ini + DATAS_VISIVEIS).map((iso) =>
+    botaoData(iso)
+  ).join("");
+  $("datas-ant").disabled = ini === 0;
+  $("datas-prox").disabled = ini >= maxInicio;
+}
+
 function desenhar() {
   const cartao = $("cartao-tabela");
   if (!estado.atual || !estado.datas.has(estado.atual)) {
@@ -316,13 +336,23 @@ function desenhar() {
   // escolha da data: só aparece quando há mais de uma
   const isos = [...estado.datas.keys()].sort();
   const caixaDatas = $("datas");
+  const navDatas = $("datas-nav") || caixaDatas;   // defensivo: HTML antigo não tem a faixa com setas
   if (isos.length > 1) {
-    caixaDatas.classList.remove("oculto");
-    caixaDatas.innerHTML = isos.map((iso) =>
-      `<button type="button" class="data-btn" data-iso="${esc(iso)}" aria-pressed="${iso === estado.atual}">${esc(rotuloIso(iso))}</button>`
+    navDatas.classList.remove("oculto");
+    // janela de no máximo 5 datas; a data aberta sempre fica dentro da janela
+    const maxInicio = Math.max(0, isos.length - DATAS_VISIVEIS);
+    const posAtual = isos.indexOf(estado.atual);
+    let ini = Math.min(Math.max(0, estado.inicioDatas), maxInicio);
+    if (posAtual >= 0 && (posAtual < ini || posAtual >= ini + DATAS_VISIVEIS)) ini = Math.min(maxInicio, Math.max(0, posAtual - DATAS_VISIVEIS + 1));
+    estado.inicioDatas = ini;
+    caixaDatas.innerHTML = isos.slice(ini, ini + DATAS_VISIVEIS).map((iso) =>
+      botaoData(iso)
     ).join("");
+    const ant = $("datas-ant"), prox = $("datas-prox");
+    if (ant) { ant.disabled = ini === 0; ant.classList.toggle("oculto", isos.length <= DATAS_VISIVEIS); }
+    if (prox) { prox.disabled = ini >= maxInicio; prox.classList.toggle("oculto", isos.length <= DATAS_VISIVEIS); }
   } else {
-    caixaDatas.classList.add("oculto");
+    navDatas.classList.add("oculto");
     caixaDatas.innerHTML = "";
   }
 
@@ -385,6 +415,32 @@ function desenharResumo(reg) {
     linha("Diferença", "diferenca", (c) => c.diferenca == null ? "<td>—</td>"
       : `<td><span class="dif ${sinal(c.diferenca) || "zero"}"${dica(c.diferenca) ? ` title="${dica(c.diferenca)}"` : ""}>${esc(contabil(c.diferenca))}</span></td>`) +
     "</tbody>";
+  ajustarSetasEmpresas();
+}
+
+/** Setas nas pontas da linha das empresas: só aparecem quando a tabela não cabe; somem na ponta. */
+function ajustarSetasEmpresas() {
+  const caixa = $("resumo-caixa"), ant = $("emp-ant"), prox = $("emp-prox");
+  if (!caixa || !ant || !prox) return;
+  const sobra = caixa.scrollWidth - caixa.clientWidth;
+  const rotulo = caixa.querySelector("thead th");
+  ant.style.left = `${(rotulo ? rotulo.offsetWidth : 0) + 6}px`;   // logo depois da coluna fixa "EMPRESA"
+  ant.classList.toggle("oculto", sobra <= 1 || caixa.scrollLeft <= 1);
+  prox.classList.toggle("oculto", sobra <= 1 || caixa.scrollLeft >= sobra - 1);
+}
+function andarEmpresas(sentido) {
+  const caixa = $("resumo-caixa");
+  if (!caixa) return;
+  const rotulo = caixa.querySelector("thead th");
+  const passo = Math.max(120, caixa.clientWidth - (rotulo ? rotulo.offsetWidth : 0) - 40);
+  caixa.scrollBy({ left: sentido * passo, behavior: "smooth" });
+}
+
+/** Calendário: abre a data escolhida se houver fluxo importado dela; senão, avisa. */
+function abrirDataDoCalendario(iso) {
+  if (!iso) return;
+  if (estado.datas.has(iso)) { estado.atual = iso; desenhar(); return; }
+  $("upload-msg").innerHTML = alerta("", esc(`Não há fluxo de caixa importado de ${rotuloIso(iso)}. Importe o relatório dessa data para consultá-lo.`));
 }
 
 function ligarTela() {
@@ -410,6 +466,20 @@ function ligarTela() {
     const x = ev.target.closest(".alerta__x");
     if (x) x.closest(".alerta")?.remove();
   });
+  const ligar = (id, fn) => { const el = $(id); if (el) el.addEventListener("click", fn); };
+  ligar("datas-ant", () => { estado.inicioDatas = Math.max(0, estado.inicioDatas - DATAS_VISIVEIS); desenharDatasSemMudar(); });
+  ligar("datas-prox", () => { estado.inicioDatas += DATAS_VISIVEIS; desenharDatasSemMudar(); });
+  ligar("emp-ant", () => andarEmpresas(-1));
+  ligar("emp-prox", () => andarEmpresas(1));
+  $("resumo-caixa")?.addEventListener("scroll", ajustarSetasEmpresas, { passive: true });
+  window.addEventListener("resize", ajustarSetasEmpresas);
+  const cal = $("data-cal");
+  ligar("btn-cal", () => {
+    if (!cal) return;
+    if (estado.atual) cal.value = estado.atual;
+    try { if (typeof cal.showPicker === "function") cal.showPicker(); else cal.click(); } catch { cal.click(); }
+  });
+  cal?.addEventListener("change", () => abrirDataDoCalendario(cal.value));
   $("datas").addEventListener("click", (ev) => {
     const b = ev.target.closest(".data-btn");
     if (!b) return;
