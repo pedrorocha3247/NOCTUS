@@ -410,7 +410,15 @@ function desenharResumo(reg) {
   // se ainda não couber, as empresas quebram em faixas (cada faixa com Fluxo/Relatório/Diferença).
   const cols = res.cols;
   const celular = ehCelular();
-  const ROTULO = celular ? 96 : 120, COL = celular ? 104 : 112, SOBRA = 24;
+  // largura da coluna pelo maior conteúdo (nome ou valor), medida com a fonte da tabela: nada fica espremido nem cortado
+  const medir = (() => { const cv = document.createElement("canvas").getContext("2d");
+    const fonte = getComputedStyle(document.body).fontFamily;
+    return (texto, peso, px) => { cv.font = `${peso} ${px}px ${fonte}`; return cv.measureText(texto).width; }; })();
+  const base = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+  const maior = cols.reduce((m, c) => Math.max(m,
+    medir(String(c.empresa).toUpperCase(), 700, base * 0.72) * 1.06,     // cabeçalho em maiúsculas com espaçamento
+    ...[c.fluxo, c.relatorio, c.diferenca].filter((v) => v != null).map((v) => medir(contabil(v), 700, base * (celular ? 0.86 : 0.88)) + 14)), 0);
+  const ROTULO = celular ? 96 : 120, COL = Math.max(celular ? 96 : 104, Math.ceil(maior + 26)), SOBRA = 24;
   const pai = cartao.parentElement.clientWidth - (parseFloat(getComputedStyle(cartao.parentElement).paddingLeft) || 0)
     - (parseFloat(getComputedStyle(cartao.parentElement).paddingRight) || 0);
   const tela = document.documentElement.clientWidth - 32;
