@@ -56,9 +56,17 @@
         <h2 id="tabela-titulo">Saídas</h2>
         <p class="tabela-total" id="tabela-total"></p>
       </div>
-      <span class="pilula" id="tabela-qtd"></span>
+      <div class="topo-dir">
+        <button type="button" class="btn-cal" id="btn-cal" aria-label="Escolher a data no calendário" title="Escolher a data no calendário"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg></button>
+        <input type="date" id="data-cal" class="data-cal" tabindex="-1" aria-hidden="true">
+        <span class="pilula" id="tabela-qtd"></span>
+      </div>
     </div>
-    <div class="datas oculto" id="datas" role="group" aria-label="Data do relatório"></div>
+    <div class="datas-nav oculto" id="datas-nav">
+      <button type="button" class="seta" id="datas-ant" aria-label="Datas anteriores" title="Datas anteriores"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg></button>
+      <div class="datas" id="datas" role="group" aria-label="Data do relatório"></div>
+      <button type="button" class="seta" id="datas-prox" aria-label="Próximas datas" title="Próximas datas"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button>
+    </div>
     <div id="tabela-aviso" aria-live="polite"></div>
     <div class="tabela-caixa">
       <table class="tabela-empresas" id="tabela-empresas">
@@ -79,8 +87,12 @@
       <span class="pilula pilula-neutra" id="resumo-situacao"></span>
     </div>
     <div id="resumo-aviso" aria-live="polite"></div>
-    <div class="resumo-caixa">
-      <table class="tabela-resumo" id="resumo-tabela" aria-label="Fluxo × Relatório de débito por empresa"></table>
+    <div class="resumo-nav">
+      <button type="button" class="seta seta-emp oculto" id="emp-ant" aria-label="Empresas anteriores" title="Empresas anteriores"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg></button>
+      <div class="resumo-caixa" id="resumo-caixa">
+        <table class="tabela-resumo" id="resumo-tabela" aria-label="Fluxo × Relatório de débito por empresa"></table>
+      </div>
+      <button type="button" class="seta seta-emp oculto" id="emp-prox" aria-label="Próximas empresas" title="Próximas empresas"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button>
     </div>
   </section>
 </main>
