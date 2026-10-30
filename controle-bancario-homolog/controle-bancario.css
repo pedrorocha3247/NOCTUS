@@ -180,7 +180,7 @@ h2{font-size:.95rem;font-weight:700;margin:0 0 1rem;letter-spacing:-.01em}
 .tabela-resumo{width:100%;table-layout:fixed;border-collapse:collapse;font-size:.88rem}
 .tabela-resumo + .tabela-resumo{border-top:2px solid var(--color-border)}
 .tabela-resumo col.rotulo{width:var(--resumo-rotulo,120px)}
-.tabela-resumo th,.tabela-resumo td{padding:.7rem .75rem;text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-variant-numeric:tabular-nums}
+.tabela-resumo th,.tabela-resumo td{padding:.7rem .75rem;text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}   /* sem "...": a largura vem do JS */
 .tabela-resumo th:last-child,.tabela-resumo td:last-child{padding-right:1.5rem}
 .tabela-resumo thead th{background:var(--color-surface-raised);color:var(--color-text-secondary);font-size:.72rem;
   font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding-top:.6rem;padding-bottom:.6rem}
