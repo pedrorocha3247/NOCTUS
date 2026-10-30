@@ -57,8 +57,20 @@
         <p class="tabela-total" id="tabela-total"></p>
       </div>
       <div class="topo-dir">
-        <button type="button" class="btn-cal" id="btn-cal" aria-label="Escolher a data no calendário" title="Escolher a data no calendário"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg></button>
-        <input type="date" id="data-cal" class="data-cal" tabindex="-1" aria-hidden="true">
+        <button type="button" class="btn-cal" id="btn-cal" aria-haspopup="dialog" aria-expanded="false" aria-controls="cal-pop" aria-label="Escolher a data no calendário" title="Escolher a data no calendário"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg></button>
+        <div class="cal-pop oculto" id="cal-pop" role="dialog" aria-label="Calendário do fluxo">
+          <div class="cal-cab">
+            <button type="button" class="cal-nav" id="cal-ant" aria-label="Mês anterior" title="Mês anterior"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg></button>
+            <span class="cal-mes" id="cal-mes"></span>
+            <button type="button" class="cal-nav" id="cal-prox" aria-label="Próximo mês" title="Próximo mês"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button>
+          </div>
+          <div class="cal-semana" aria-hidden="true"><span>D</span><span>S</span><span>T</span><span>Q</span><span>Q</span><span>S</span><span>S</span></div>
+          <div class="cal-dias" id="cal-dias"></div>
+          <div class="cal-rodape">
+            <span class="cal-legenda"><span class="cal-ponto" aria-hidden="true"></span>Dia com fluxo importado</span>
+            <button type="button" class="cal-hoje" id="cal-hoje">Ir para hoje</button>
+          </div>
+        </div>
         <span class="pilula" id="tabela-qtd"></span>
       </div>
     </div>
