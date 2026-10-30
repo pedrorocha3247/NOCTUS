@@ -377,7 +377,7 @@ function desenhar() {
 }
 
 /** Tabela resumo (modelo B): Fluxo × Relatório de débito da data aberta. */
-function desenharResumo(reg) {
+function desenharResumo(reg, colMinima = 0) {
   const cartao = $("cartao-resumo");
   if (!cartao) return;   // defensivo: na publicação o JS vai ao ar antes do HTML
   cartao.classList.remove("oculto");
@@ -417,8 +417,11 @@ function desenharResumo(reg) {
   const base = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
   const maior = cols.reduce((m, c) => Math.max(m,
     medir(String(c.empresa).toUpperCase(), 700, base * 0.72) * 1.06,     // cabeçalho em maiúsculas com espaçamento
-    ...[c.fluxo, c.relatorio, c.diferenca].filter((v) => v != null).map((v) => medir(contabil(v), 700, base * (celular ? 0.86 : 0.88)) + 14)), 0);
-  const ROTULO = celular ? 96 : 120, COL = Math.max(celular ? 96 : 104, Math.ceil(maior + 26)), SOBRA = 24;
+    ...[c.fluxo, c.relatorio].filter((v) => v != null).map((v) => medir(contabil(v), 700, base * (celular ? 0.86 : 0.88))),
+    // a diferença vai dentro do selo colorido: soma a folga interna do selo (.45rem de cada lado)
+    ...[c.diferenca].filter((v) => v != null).map((v) => medir(contabil(v), 700, base * (celular ? 0.86 : 0.88)) + base * 0.9)), 0);
+  // + folga da célula (.75rem de cada lado) + margem de segurança para a fonte
+  const ROTULO = celular ? 96 : 120, COL = Math.max(celular ? 96 : 104, Math.ceil(maior + base * 1.5 + 12), colMinima), SOBRA = 24;
   const pai = cartao.parentElement.clientWidth - (parseFloat(getComputedStyle(cartao.parentElement).paddingLeft) || 0)
     - (parseFloat(getComputedStyle(cartao.parentElement).paddingRight) || 0);
   const tela = document.documentElement.clientWidth - 32;
@@ -450,6 +453,22 @@ function desenharResumo(reg) {
   for (let i = 0; i < cols.length; i += porFaixa) grupos.push(cols.slice(i, i + porFaixa));
   const caixa = $("resumo-caixa") || $("resumo-tabela").parentElement;
   caixa.innerHTML = grupos.map(tabela).join("");
+
+  // conferência com a fonte real já desenhada: se alguma célula ficou apertada (fonte do computador mais larga
+  // que a medida, como no Windows do Rocha em 30/10), refaz uma vez com a coluna na largura que faltou
+  if (!colMinima) {
+    const FOLGA = 8;
+    let falta = 0;
+    for (const cel of caixa.querySelectorAll("thead th[scope=col], tbody td")) {
+      const cs = getComputedStyle(cel);
+      const util = cel.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+      const dif = cel.querySelector(".dif");
+      const conteudo = dif ? dif.getBoundingClientRect().width + FOLGA
+        : cel.scrollWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+      if (cel.textContent && conteudo > util + 0.5) falta = Math.max(falta, conteudo - util);
+    }
+    if (falta > 0) desenharResumo(reg, Math.ceil(COL + falta + 2));
+  }
 }
 
 /** Ao mudar o tamanho da janela, refaz a tabela resumo (largura do quadro e faixas). */
@@ -530,6 +549,11 @@ function ligarTela() {
   ligar("datas-ant", () => { estado.inicioDatas = Math.max(0, estado.inicioDatas - visiveis()); desenharDatasSemMudar(); });
   ligar("datas-prox", () => { estado.inicioDatas += visiveis(); desenharDatasSemMudar(); });
   window.addEventListener("resize", aoRedimensionar);
+  // a largura das colunas é medida com a fonte Inter: quando ela termina de carregar, mede de novo
+  try {
+    document.fonts?.ready?.then(aoRedimensionar);
+    document.fonts?.addEventListener?.("loadingdone", aoRedimensionar);   // fonte que chega depois da primeira medida
+  } catch { /* sem a API de fontes, segue com a medida atual */ }
   ligar("btn-cal", () => abrirCalendario());
   ligar("cal-ant", () => andarMes(-1));
   ligar("cal-prox", () => andarMes(1));
