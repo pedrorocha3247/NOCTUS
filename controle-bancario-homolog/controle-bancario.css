@@ -173,19 +173,19 @@ h2{font-size:.95rem;font-weight:700;margin:0 0 1rem;letter-spacing:-.01em}
 .kpi-val.neg{color:var(--color-error)}
 .pilula-neutra{margin-left:auto;background:var(--color-surface-raised);color:var(--color-text)}
 #resumo-aviso:not(:empty){padding:.9rem 1.5rem 0}
-/* setas nas pontas da linha das empresas (30/10): aparecem só quando há rolagem */
-.resumo-nav{position:relative}
-#resumo-aviso:not(:empty) ~ .resumo-nav{margin-top:.9rem}
-.resumo-caixa{overflow-x:auto;scroll-behavior:smooth}
-.seta-emp{position:absolute;top:.35rem;z-index:3;width:30px;height:30px;box-shadow:0 2px 8px rgba(0,0,0,.25)}
-.seta-emp#emp-prox{right:.5rem}
-.tabela-resumo{min-width:100%;border-collapse:collapse;font-size:.88rem}
-.tabela-resumo th,.tabela-resumo td{padding:.7rem .75rem;text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+/* 30/10: todas as empresas sempre à vista. O quadro cresce até a largura da tela (largura posta pelo JS)
+   e, se ainda não couber, as empresas quebram em mais faixas, uma tabela por faixa. Sem rolagem, sem setas. */
+#resumo-aviso:not(:empty) ~ .resumo-caixa{margin-top:.9rem}
+.resumo-caixa{overflow:visible}
+.tabela-resumo{width:100%;table-layout:fixed;border-collapse:collapse;font-size:.88rem}
+.tabela-resumo + .tabela-resumo{border-top:2px solid var(--color-border)}
+.tabela-resumo col.rotulo{width:var(--resumo-rotulo,120px)}
+.tabela-resumo th,.tabela-resumo td{padding:.7rem .75rem;text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-variant-numeric:tabular-nums}
 .tabela-resumo th:last-child,.tabela-resumo td:last-child{padding-right:1.5rem}
 .tabela-resumo thead th{background:var(--color-surface-raised);color:var(--color-text-secondary);font-size:.72rem;
   font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding-top:.6rem;padding-bottom:.6rem}
-.tabela-resumo tbody td{font-weight:600;min-width:6.5rem}
-.tabela-resumo tr > :first-child{position:sticky;left:0;z-index:1;text-align:left;padding-left:1.5rem;background:var(--color-surface)}
+.tabela-resumo tbody td{font-weight:600}
+.tabela-resumo tr > :first-child{text-align:left;padding-left:1.5rem;background:var(--color-surface)}
 .tabela-resumo thead tr > :first-child{background:var(--color-surface-raised)}
 .tabela-resumo tbody th{font-weight:700;color:var(--color-text)}
 .tabela-resumo tr.relatorio > *{background:var(--cb-zebra)}
