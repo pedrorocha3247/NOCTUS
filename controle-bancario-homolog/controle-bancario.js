@@ -131,12 +131,15 @@ async function servidor(caminho, opcoes = {}, tentouRenovar = false) {
 }
 
 /* ------------------------------------------------------------ estado */
-const DATAS_VISIVEIS = 5;   // pedido do Rocha (30/10): no máximo 5 dias por vez, setas para andar
+// pedido do Rocha (30/10): no máximo 5 dias por vez (3 no celular, para caber a data com o ano), setas para andar
+const ehCelular = () => { try { return window.matchMedia("(max-width:560px)").matches; } catch { return false; } };
+const visiveis = () => (ehCelular() ? 3 : 5);
 const estado = {
   datas: new Map(),   // iso → { iso, empresas, arquivo, atualizado_em, naoSalvo }
   debitos: new Map(), // iso → { iso, empresas: [{ codigo, empresa, total, qtd, soma, confere }], arquivo, naoSalvo }
   atual: null,        // iso escolhida
-  inicioDatas: 0,     // 1ª data visível na faixa de datas (no máximo DATAS_VISIVEIS por vez)
+  inicioDatas: 0,      // 1ª data visível na faixa de datas (no máximo visiveis() por vez)
+  calMes: [2026, 0],   // [ano, mês 0-11] mostrado no calendário
 };
 
 async function carregarSalvos() {
@@ -310,14 +313,14 @@ async function importarDebito(deb, nome) {
 function botaoData(iso) {
   const longo = rotuloIso(iso);
   return `<button type="button" class="data-btn" data-iso="${esc(iso)}" aria-pressed="${iso === estado.atual}" ` +
-    `aria-label="${esc(longo)}" title="${esc(longo)}">${esc(longo.slice(0, 5))}</button>`;
+    `aria-label="${esc(longo)}">${esc(longo)}</button>`;
 }
 function desenharDatasSemMudar() {
   const isos = [...estado.datas.keys()].sort();
-  const maxInicio = Math.max(0, isos.length - DATAS_VISIVEIS);
+  const maxInicio = Math.max(0, isos.length - visiveis());
   const ini = Math.min(Math.max(0, estado.inicioDatas), maxInicio);
   estado.inicioDatas = ini;
-  $("datas").innerHTML = isos.slice(ini, ini + DATAS_VISIVEIS).map((iso) =>
+  $("datas").innerHTML = isos.slice(ini, ini + visiveis()).map((iso) =>
     botaoData(iso)
   ).join("");
   $("datas-ant").disabled = ini === 0;
@@ -340,17 +343,17 @@ function desenhar() {
   if (isos.length > 1) {
     navDatas.classList.remove("oculto");
     // janela de no máximo 5 datas; a data aberta sempre fica dentro da janela
-    const maxInicio = Math.max(0, isos.length - DATAS_VISIVEIS);
+    const maxInicio = Math.max(0, isos.length - visiveis());
     const posAtual = isos.indexOf(estado.atual);
     let ini = Math.min(Math.max(0, estado.inicioDatas), maxInicio);
-    if (posAtual >= 0 && (posAtual < ini || posAtual >= ini + DATAS_VISIVEIS)) ini = Math.min(maxInicio, Math.max(0, posAtual - DATAS_VISIVEIS + 1));
+    if (posAtual >= 0 && (posAtual < ini || posAtual >= ini + visiveis())) ini = Math.min(maxInicio, Math.max(0, posAtual - visiveis() + 1));
     estado.inicioDatas = ini;
-    caixaDatas.innerHTML = isos.slice(ini, ini + DATAS_VISIVEIS).map((iso) =>
+    caixaDatas.innerHTML = isos.slice(ini, ini + visiveis()).map((iso) =>
       botaoData(iso)
     ).join("");
     const ant = $("datas-ant"), prox = $("datas-prox");
-    if (ant) { ant.disabled = ini === 0; ant.classList.toggle("oculto", isos.length <= DATAS_VISIVEIS); }
-    if (prox) { prox.disabled = ini >= maxInicio; prox.classList.toggle("oculto", isos.length <= DATAS_VISIVEIS); }
+    if (ant) { ant.disabled = ini === 0; ant.classList.toggle("oculto", isos.length <= visiveis()); }
+    if (prox) { prox.disabled = ini >= maxInicio; prox.classList.toggle("oculto", isos.length <= visiveis()); }
   } else {
     navDatas.classList.add("oculto");
     caixaDatas.innerHTML = "";
@@ -436,11 +439,48 @@ function andarEmpresas(sentido) {
   caixa.scrollBy({ left: sentido * passo, behavior: "smooth" });
 }
 
-/** Calendário: abre a data escolhida se houver fluxo importado dela; senão, avisa. */
-function abrirDataDoCalendario(iso) {
-  if (!iso) return;
-  if (estado.datas.has(iso)) { estado.atual = iso; desenhar(); return; }
-  $("upload-msg").innerHTML = alerta("", esc(`Não há fluxo de caixa importado de ${rotuloIso(iso)}. Importe o relatório dessa data para consultá-lo.`));
+/* ------------------------------------------------------------ calendário (modelo A, 30/10) */
+const MESES = ["janeiro","fevereiro","março","abril","maio","junho","julho","agosto","setembro","outubro","novembro","dezembro"];
+const isoDe = (a, m, d) => `${a}-${String(m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+function hojeIso() { const h = new Date(); return isoDe(h.getFullYear(), h.getMonth(), h.getDate()); }
+function desenharCalendario() {
+  const caixa = $("cal-dias");
+  if (!caixa) return;
+  const [a, m] = estado.calMes;
+  $("cal-mes").textContent = `${MESES[m][0].toUpperCase()}${MESES[m].slice(1)} de ${a}`;
+  const primeiro = new Date(a, m, 1).getDay();       // 0 = domingo
+  const hoje = hojeIso();
+  let html = "";
+  for (let i = 0; i < 42; i++) {
+    const dt = new Date(a, m, 1 - primeiro + i);
+    const iso = isoDe(dt.getFullYear(), dt.getMonth(), dt.getDate());
+    const doMes = dt.getMonth() === m;
+    const tem = estado.datas.has(iso);
+    const cls = ["cal-dia", tem ? "tem" : "", doMes ? "" : "fora", iso === hoje ? "hoje" : ""].filter(Boolean).join(" ");
+    const rot = `${rotuloIso(iso)}${tem ? ", com fluxo importado" : ", sem fluxo"}`;
+    html += `<button type="button" class="${cls}" data-iso="${iso}" aria-label="${rot}"` +
+      `${tem ? ` aria-pressed="${iso === estado.atual}"` : " disabled"}>${dt.getDate()}</button>`;
+  }
+  caixa.innerHTML = html;
+}
+function abrirCalendario(abrir) {
+  const pop = $("cal-pop"), btn = $("btn-cal");
+  if (!pop || !btn) return;
+  const ja = !pop.classList.contains("oculto");
+  const vai = abrir ?? !ja;
+  if (vai) {
+    const base = estado.atual || hojeIso();
+    estado.calMes = [Number(base.slice(0, 4)), Number(base.slice(5, 7)) - 1];
+    desenharCalendario();
+  }
+  pop.classList.toggle("oculto", !vai);
+  btn.setAttribute("aria-expanded", String(vai));
+  if (vai) (pop.querySelector('.cal-dia[aria-pressed="true"]') || pop.querySelector(".cal-dia.tem") || $("cal-prox"))?.focus();
+}
+function andarMes(sentido) {
+  let [a, m] = estado.calMes; m += sentido;
+  if (m < 0) { m = 11; a--; } if (m > 11) { m = 0; a++; }
+  estado.calMes = [a, m]; desenharCalendario();
 }
 
 function ligarTela() {
@@ -467,19 +507,29 @@ function ligarTela() {
     if (x) x.closest(".alerta")?.remove();
   });
   const ligar = (id, fn) => { const el = $(id); if (el) el.addEventListener("click", fn); };
-  ligar("datas-ant", () => { estado.inicioDatas = Math.max(0, estado.inicioDatas - DATAS_VISIVEIS); desenharDatasSemMudar(); });
-  ligar("datas-prox", () => { estado.inicioDatas += DATAS_VISIVEIS; desenharDatasSemMudar(); });
+  ligar("datas-ant", () => { estado.inicioDatas = Math.max(0, estado.inicioDatas - visiveis()); desenharDatasSemMudar(); });
+  ligar("datas-prox", () => { estado.inicioDatas += visiveis(); desenharDatasSemMudar(); });
   ligar("emp-ant", () => andarEmpresas(-1));
   ligar("emp-prox", () => andarEmpresas(1));
   $("resumo-caixa")?.addEventListener("scroll", ajustarSetasEmpresas, { passive: true });
   window.addEventListener("resize", ajustarSetasEmpresas);
-  const cal = $("data-cal");
-  ligar("btn-cal", () => {
-    if (!cal) return;
-    if (estado.atual) cal.value = estado.atual;
-    try { if (typeof cal.showPicker === "function") cal.showPicker(); else cal.click(); } catch { cal.click(); }
+  ligar("btn-cal", () => abrirCalendario());
+  ligar("cal-ant", () => andarMes(-1));
+  ligar("cal-prox", () => andarMes(1));
+  ligar("cal-hoje", () => { const h = hojeIso(); estado.calMes = [Number(h.slice(0, 4)), Number(h.slice(5, 7)) - 1]; desenharCalendario(); });
+  ligar("cal-dias", (ev) => {
+    const d = ev.target.closest(".cal-dia.tem");
+    if (!d) return;
+    estado.atual = d.dataset.iso; abrirCalendario(false); desenhar();
   });
-  cal?.addEventListener("change", () => abrirDataDoCalendario(cal.value));
+  document.addEventListener("keydown", (ev) => {
+    const pop = $("cal-pop");
+    if (ev.key === "Escape" && pop && !pop.classList.contains("oculto")) { abrirCalendario(false); $("btn-cal")?.focus(); }
+  });
+  document.addEventListener("click", (ev) => {
+    const pop = $("cal-pop");
+    if (pop && !pop.classList.contains("oculto") && !ev.target.closest("#cal-pop, #btn-cal")) abrirCalendario(false);
+  });
   $("datas").addEventListener("click", (ev) => {
     const b = ev.target.closest(".data-btn");
     if (!b) return;
