@@ -44,7 +44,12 @@ function msgErro(e, oQueFalhou, padrao = MSG_FALHA_COMUNICACAO) {
   registrarErro(e, oQueFalhou);
   return `${oQueFalhou}. ${padrao}`;
 }
-const alerta = (tipo, html) => `<div class="alerta ${tipo}" role="${tipo === "erro" ? "alert" : "status"}">${html}</div>`;
+/* Toda mensagem leva o × para removê-la (regra do Rocha, 30/10/2026). O clique é tratado em ligarTela(). */
+const ICONE_X = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" ' +
+  'stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>';
+const alerta = (tipo, html) => `<div class="alerta ${tipo}" role="${tipo === "erro" ? "alert" : "status"}">` +
+  `<span class="alerta__texto">${html}</span>` +
+  `<button type="button" class="alerta__x" aria-label="Remover mensagem" title="Remover mensagem">${ICONE_X}</button></div>`;
 
 /* ------------------------------------------------------------ sessão (mesmo login do painel) */
 function sessaoGravada() {
@@ -252,10 +257,11 @@ function desenhar() {
   const reg = estado.datas.get(estado.atual);
   const empresas = reg.empresas || [];
   const total = Math.round(empresas.reduce((s, e) => s + Number(e.saidas || 0), 0) * 100) / 100;
-  $("tabela-titulo").textContent = `Empresas com saídas em ${rotuloIso(reg.iso)}`;
-  $("tabela-resumo").textContent = empresas.length
-    ? `${plural(empresas.length, "empresa", "empresas")} · total R$ ${moeda(total)}`
-    : "Nenhuma empresa com saída nesta data.";
+  // defensivo: na publicação o JS vai ao ar antes do HTML que tem esses campos
+  const por = (id, texto) => { const el = $(id); if (el) el.textContent = texto; };
+  por("tabela-titulo", `Saídas em ${rotuloIso(reg.iso)}`);
+  por("tabela-total", `R$ ${moeda(total)}`);
+  por("tabela-qtd", empresas.length ? plural(empresas.length, "empresa", "empresas") : "Nenhuma empresa");
   $("tabela-aviso").innerHTML = reg.naoSalvo
     ? alerta("erro", "Esta data ainda não foi salva no servidor. Importe o relatório de novo quando a comunicação voltar.")
     : "";
@@ -281,6 +287,11 @@ function ligarTela() {
   solta.addEventListener("drop", (ev) => {
     const f = ev.dataTransfer?.files?.[0];
     if (f) importar(f);
+  });
+  // × de qualquer mensagem do módulo: remove só aquela mensagem
+  $("modulo").addEventListener("click", (ev) => {
+    const x = ev.target.closest(".alerta__x");
+    if (x) x.closest(".alerta")?.remove();
   });
   $("datas").addEventListener("click", (ev) => {
     const b = ev.target.closest(".data-btn");
