@@ -39,10 +39,10 @@
 
 <main id="modulo" class="oculto">
   <section class="cartao">
-    <h2>Relatório de fluxo de caixa</h2>
+    <h2>Relatórios</h2>
     <div class="solta" id="solta" role="button" tabindex="0" aria-controls="arquivo">
-      <strong>Clique para escolher o relatório de fluxo de caixa (Excel)</strong>
-      <span>ou arraste o arquivo para cá</span>
+      <strong>Clique para escolher o relatório (Excel)</strong>
+      <span>fluxo de caixa ou débito em conta · ou arraste o arquivo para cá</span>
       <input type="file" id="arquivo"
              accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" hidden>
     </div>
@@ -67,6 +67,20 @@
         </thead>
         <tbody id="tabela-corpo"></tbody>
       </table>
+    </div>
+  </section>
+
+  <!-- Parte 2 (30/10/2026), modelo B: Fluxo × Relatório de débito da data aberta -->
+  <section class="cartao cartao-resumo oculto" id="cartao-resumo" aria-labelledby="resumo-titulo">
+    <div class="resumo-topo">
+      <div class="kpi"><h2 class="kpi-rot" id="resumo-titulo">Fluxo</h2><span class="kpi-val" id="resumo-fluxo"></span></div>
+      <div class="kpi"><span class="kpi-rot">Relatório de débito</span><span class="kpi-val" id="resumo-relatorio"></span></div>
+      <div class="kpi"><span class="kpi-rot">Diferença</span><span class="kpi-val" id="resumo-diferenca"></span></div>
+      <span class="pilula pilula-neutra" id="resumo-situacao"></span>
+    </div>
+    <div id="resumo-aviso" aria-live="polite"></div>
+    <div class="resumo-caixa">
+      <table class="tabela-resumo" id="resumo-tabela" aria-label="Fluxo × Relatório de débito por empresa"></table>
     </div>
   </section>
 </main>
