@@ -3,3 +3,5 @@
 Sistema Integrado de Processos e Eficiencia.
 
 Aplicacao publicada via GitHub Pages. O codigo-fonte completo (React + Vite + TypeScript) sera adicionado em seguida.
+
+Última publicação: 30/10/2026 (Controle Bancário, Parte 2).
