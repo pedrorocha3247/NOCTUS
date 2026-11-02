@@ -96,6 +96,25 @@
     <div id="quadro-nota" class="nota" aria-live="polite"></div>
     <div id="quadro-aviso" aria-live="polite"></div>
   </section>
+
+  <!-- 4. conferência por tipo de lançamento e composição da diferença (regras 1.1 a 1.5) -->
+  <section class="cartao cartao-composicao oculto" id="cartao-composicao" aria-labelledby="composicao-titulo">
+    <div class="quadro-topo">
+      <div>
+        <h2 id="composicao-titulo">Composição da diferença</h2>
+        <p class="quadro-conta" id="composicao-sub"></p>
+      </div>
+      <span class="pilula" id="composicao-situacao"></span>
+    </div>
+    <div class="bloco-comp">
+      <h3>Conferência por tipo de lançamento</h3>
+      <div class="rolagem"><table class="tabela-comp" id="tabela-regras"></table></div>
+    </div>
+    <div class="bloco-comp">
+      <h3>De onde vem a diferença do saldo</h3>
+      <div class="rolagem"><table class="tabela-comp" id="tabela-composicao"></table></div>
+    </div>
+  </section>
 </main>
 
 <script type="module" src="./conciliacoes.js"></script>
