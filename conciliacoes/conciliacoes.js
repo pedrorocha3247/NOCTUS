@@ -132,6 +132,7 @@ const estado = {
   nomeOfx: "",
   textoOfx: "",      // guardado para reler o extrato quando a data do SCK chegar depois
   naoSalvo: false,
+  composicaoAberta: false,   // recolhida por padrão (pedido do Rocha, 02/11/2026)
 };
 
 /* ------------------------------------------------------------ servidor */
@@ -196,6 +197,7 @@ function montarEscolha() {
     $("cartao-arquivos").classList.toggle("oculto", !estado.conta);
     $("cartao-quadro").classList.add("oculto");
     $("cartao-composicao").classList.add("oculto");
+    estado.composicaoAberta = false;
     $("conta-detalhe").textContent = estado.conta
       ? `Conta ${estado.conta.codigoSck} no SCK · CNPJ ${estado.conta.cnpj}`
       : "";
@@ -411,6 +413,7 @@ function desenharComposicao() {
   const c = comporDiferenca({ sck: estado.sck, ofx: estado.ofx });
   if (!c) { cartao.classList.add("oculto"); return; }
   cartao.classList.remove("oculto");
+  aplicarRecolhimento();
 
   $("composicao-sub").textContent = c.diferencaSaldo == null ? ""
     : `Diferença do saldo (Banco − SCK): ${comSinal(c.diferencaSaldo)}`;
@@ -479,6 +482,15 @@ function desenharComposicao() {
     `</tfoot>`;
 }
 
+/** Abre ou fecha o corpo da composição; o topo (título, diferença e situação) fica sempre à vista. */
+function aplicarRecolhimento() {
+  const aberta = estado.composicaoAberta;
+  $("composicao-corpo").hidden = !aberta;
+  const botao = $("composicao-alternar");
+  botao.setAttribute("aria-expanded", String(aberta));
+  botao.textContent = aberta ? "Ocultar composição" : "Mostrar composição";
+}
+
 /* ------------------------------------------------------------ tela */
 function ligarCampo(qual, aoEscolher) {
   const solta = $(`solta-${qual}`), entrada = $(`arq-${qual}`);
@@ -507,6 +519,10 @@ function ligarTela() {
   montarEscolha();
   ligarCampo("sck", importarSck);
   ligarCampo("ofx", importarOfx);
+  $("composicao-alternar").addEventListener("click", () => {
+    estado.composicaoAberta = !estado.composicaoAberta;
+    aplicarRecolhimento();
+  });
 
   document.addEventListener("click", (e) => {
     const x = e.target.closest(".alerta__x");
