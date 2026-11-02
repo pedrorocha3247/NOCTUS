@@ -19,6 +19,7 @@
 import { lerConciliacaoSck, linhasDoExcel } from "./sck.js";
 import { lerExtratoOfx, textoDoOfx } from "./ofx.js";
 import { montarConciliacao, conferirConta, rotuloConta } from "./comparar.js";
+import { comporDiferenca, composicaoParaGravar } from "./composicao.js";
 import { empresasHabilitadas, contaPorId } from "./contas-sck.js";
 
 const SB_URL = "https://wyyqjlwzphlhnplmirlg.supabase.co";
@@ -147,12 +148,14 @@ async function salvar() {
     // só o resultado: nada de lançamento com nome ou CPF de cliente
     sck: sck ? { entradas: sck.entradas, saidas: sck.saidas, totalImpresso: sck.totalImpresso,
                  resumo: sck.resumo, status: sck.status, responsavel: sck.responsavel,
-                 lancamentos: sck.lancamentos.length } : {},
+                 lancamentos: sck.lancamentos.length, adicionados: sck.adicionados?.total ?? 0 } : {},
     extrato: ofx ? { entradas: ofx.entradas, saidas: ofx.saidas,
                      saldoDoDia: ofx.saldoDoDia, saldoAnterior: ofx.saldoAnterior, saldoLivro: ofx.saldoLivro,
                      lancamentos: ofx.lancamentos.length } : {},
     comparacao: { situacao: quadro.situacao, linhas: quadro.linhas.map(({ chave, sck: s, banco, diferenca, situacao }) =>
-                    ({ chave, sck: s, banco, diferenca, situacao })) },
+                    ({ chave, sck: s, banco, diferenca, situacao })),
+                  // estruturada para a Parte 2 (sem nome nem CPF/CNPJ: o FITID liga ao extrato)
+                  composicao: composicaoParaGravar(comporDiferenca({ sck, ofx })) },
     arquivo_sck: estado.nomeSck || null,
     arquivo_ofx: estado.nomeOfx || null,
     atualizado_em: new Date().toISOString(),
@@ -192,6 +195,7 @@ function montarEscolha() {
     $("upload-msg").innerHTML = "";
     $("cartao-arquivos").classList.toggle("oculto", !estado.conta);
     $("cartao-quadro").classList.add("oculto");
+    $("cartao-composicao").classList.add("oculto");
     $("conta-detalhe").textContent = estado.conta
       ? `Conta ${estado.conta.codigoSck} no SCK · CNPJ ${estado.conta.cnpj}`
       : "";
@@ -333,6 +337,7 @@ const TEXTO_SITUACAO = { conferido: "Confere", divergente: "Divergente", indefin
 
 function desenharQuadro() {
   const cartao = $("cartao-quadro");
+  desenharComposicao();
   if (!estado.sck && !estado.ofx) { cartao.classList.add("oculto"); return; }
   cartao.classList.remove("oculto");
 
@@ -379,11 +384,99 @@ function desenharQuadro() {
       (q.sckSozinho.status ? ` (status <strong>${esc(q.sckSozinho.status)}</strong>)` : "") +
       ". Esse número é do próprio SCK e não entra na comparação acima.");
   }
+  if (estado.sck?.adicionados?.linhas?.length) {
+    partes.push(`Lançamentos Adicionados no SCK: <strong>${estado.sck.adicionados.linhas.length}, somando ` +
+      `${esc(moeda(estado.sck.adicionados.total))}</strong>. Ficam fora das entradas do dia e aparecem na composição, para validar.`);
+  }
   if (estado.naoSalvo) partes.push("Esta conciliação <strong>ainda não foi salva no servidor</strong>.");
   if (q.pendencias.length) partes.push(esc(q.pendencias.join(" ")));
   $("quadro-nota").innerHTML = partes.join("<br>");
 
   $("quadro-aviso").innerHTML = q.alertas.map((a) => alerta("atencao", esc(a))).join("");
+}
+
+/* ------------------------------------------------------------ composição (regras 1.1 a 1.5) */
+const TEXTO_REGRA = { conferido: "Conciliado", divergente: "Divergente", pendente: "A lançar", indefinido: "Não identificado" };
+const GRUPOS = [
+  ["lancar", "Lançar no SCK", "acao-lancar"],
+  ["adicionar", "Adicionar na conciliação", "acao-adicionar"],
+  ["validar", "Validar (não lançar de novo)", "acao-validar"],
+  ["divergencia", "Divergências", "acao-divergencia"],
+];
+const valorOuTraco = (v) => (v == null ? "—" : moeda(v));
+const dataCurta = (d) => d?.rotulo || (d?.iso ? rotuloIso(d.iso) : "");
+
+function desenharComposicao() {
+  const cartao = $("cartao-composicao");
+  const c = comporDiferenca({ sck: estado.sck, ofx: estado.ofx });
+  if (!c) { cartao.classList.add("oculto"); return; }
+  cartao.classList.remove("oculto");
+
+  $("composicao-sub").textContent = c.diferencaSaldo == null ? ""
+    : `Diferença do saldo (Banco − SCK): ${comSinal(c.diferencaSaldo)}`;
+  const pilula = $("composicao-situacao");
+  pilula.textContent = c.semOrigem == null ? "Falta o saldo" : c.fecha ? "Composição fecha" : "Diferença sem origem";
+  pilula.className = `pilula selo ${c.semOrigem == null ? "indefinido" : c.fecha ? "confere" : "divergente"}`;
+
+  /* conferência por tipo */
+  $("tabela-regras").innerHTML = `<thead><tr><th>Tipo</th><th class="num">Banco</th><th class="num">SCK</th>` +
+    `<th class="num">Diferença</th><th>Situação</th></tr></thead><tbody>` +
+    (c.regras.length ? c.regras.map((r) => `<tr>
+      <td>${esc(r.rotulo)}<span class="detalhe">${esc(r.detalhe || "")}</span></td>
+      <td class="num" data-rotulo="Banco">${valorOuTraco(r.banco)}</td>
+      <td class="num" data-rotulo="SCK">${valorOuTraco(r.sck)}</td>
+      <td class="num" data-rotulo="Diferença">${r.diferenca == null ? "—" : comSinal(r.diferenca)}</td>
+      <td><span class="selo ${r.situacao === "conferido" ? "confere" : r.situacao}">${TEXTO_REGRA[r.situacao]}</span></td>
+    </tr>`).join("") : `<tr><td colspan="5">Nenhum lançamento de cobrança, PIX QRS ou PIX recebido no dia.</td></tr>`) +
+    `</tbody>`;
+
+  /* de onde vem a diferença */
+  let corpo = "";
+  for (const [grupo, titulo, classe] of GRUPOS) {
+    const itens = c.componentes.filter((x) => x.grupo === grupo);
+    const temSaldoAnterior = grupo === "validar" && c.saldoAnterior;
+    if (!itens.length && !temSaldoAnterior) continue;
+    corpo += `<tr class="grupo"><td colspan="3"><span class="${classe}">${esc(titulo)}</span></td></tr>`;
+    for (const x of itens) {
+      const detalhe = x.tipo === "pixRecebido"
+        ? [dataCurta(x.data), x.nome, x.documento].filter(Boolean).join(" · ") + (x.historico ? ` — ${x.historico}` : "")
+        : x.linhas ? `${x.linhas.length} lançamento(s) na seção Lançamentos Adicionados do SCK`
+        : [dataCurta(x.data), x.historico].filter(Boolean).join(" · ");
+      corpo += `<tr><td>${esc(x.descricao)}<span class="detalhe">${esc(detalhe)}</span></td>` +
+        `<td class="num">${comSinal(x.valor)}</td><td>${esc(x.tratamento)}</td></tr>`;
+      for (const l of x.linhas || []) {
+        corpo += `<tr class="sub"><td>${esc([dataCurta(l.data), l.historico].filter(Boolean).join(" · "))}</td>` +
+          `<td class="num">${comSinal(l.direcao === "saida" ? -l.valor : l.valor)}</td><td></td></tr>`;
+      }
+    }
+    if (temSaldoAnterior) {
+      const s = c.saldoAnterior;
+      const resultado = s.situacao === "conferido" ? `confere com a Diferença Geral do SCK (${moeda(s.sck)})`
+        : s.situacao === "divergente" ? `não bate com a Diferença Geral do SCK (${moeda(s.sck)}): diferença de ${comSinal(s.diferenca)}`
+        : s.motivo;
+      corpo += `<tr><td>Saldo anterior do dia (extrato)<span class="detalhe">Conferência, não entra na soma</span></td>` +
+        `<td class="num">${moeda(s.banco)}</td>` +
+        `<td><span class="selo ${s.situacao === "conferido" ? "confere" : s.situacao}">${TEXTO_SITUACAO[s.situacao]}</span> ` +
+        `${esc(resultado)}</td></tr>`;
+    }
+  }
+  if (c.semOrigem != null && !c.fecha) {
+    const dica = !estado.sck?.adicionados?.linhas?.length
+      ? "Investigar. O relatório não tem Lançamentos Adicionados: confira se faltam rendimentos na conciliação do SCK."
+      : "Investigar: nenhuma regra explica este valor.";
+    corpo += `<tr class="grupo"><td colspan="3"><span class="acao-divergencia">Sem origem identificada</span></td></tr>` +
+      `<tr><td>Diferença sem origem identificada</td><td class="num">${comSinal(c.semOrigem)}</td><td>${esc(dica)}</td></tr>`;
+  }
+  if (!corpo) corpo = `<tr><td colspan="3">Nada a lançar, adicionar ou validar.</td></tr>`;
+
+  $("tabela-composicao").innerHTML =
+    `<thead><tr><th>Descrição</th><th class="num">Valor</th><th>Tratamento</th></tr></thead>` +
+    `<tbody>${corpo}</tbody><tfoot>` +
+    `<tr><td>Total explicado</td><td class="num">${comSinal(c.explicado)}</td><td></td></tr>` +
+    (c.diferencaSaldo == null ? "" :
+      `<tr class="total-dif"><td>Diferença do saldo (Banco − SCK)</td><td class="num">${comSinal(c.diferencaSaldo)}</td>` +
+      `<td>${c.fecha ? "A composição explica toda a diferença." : "A composição não explica toda a diferença."}</td></tr>`) +
+    `</tfoot>`;
 }
 
 /* ------------------------------------------------------------ tela */
