@@ -104,15 +104,22 @@
         <h2 id="composicao-titulo">Composição da diferença</h2>
         <p class="quadro-conta" id="composicao-sub"></p>
       </div>
-      <span class="pilula" id="composicao-situacao"></span>
+      <div class="comp-acoes">
+        <span class="pilula" id="composicao-situacao"></span>
+        <!-- recolhida por padrão (pedido do Rocha, 02/11/2026) -->
+        <button type="button" class="botao-comp" id="composicao-alternar" aria-expanded="false"
+                aria-controls="composicao-corpo">Mostrar composição</button>
+      </div>
     </div>
-    <div class="bloco-comp">
-      <h3>Conferência por tipo de lançamento</h3>
-      <div class="rolagem"><table class="tabela-comp" id="tabela-regras"></table></div>
-    </div>
-    <div class="bloco-comp">
-      <h3>De onde vem a diferença do saldo</h3>
-      <div class="rolagem"><table class="tabela-comp" id="tabela-composicao"></table></div>
+    <div id="composicao-corpo" class="composicao-corpo" hidden>
+      <div class="bloco-comp">
+        <h3>Conferência por tipo de lançamento</h3>
+        <div class="rolagem"><table class="tabela-comp" id="tabela-regras"></table></div>
+      </div>
+      <div class="bloco-comp">
+        <h3>De onde vem a diferença do saldo</h3>
+        <div class="rolagem"><table class="tabela-comp" id="tabela-composicao"></table></div>
+      </div>
     </div>
   </section>
 </main>
