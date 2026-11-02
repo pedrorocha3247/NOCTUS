@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Conciliações Bancárias — NOCTUS</title>
+<meta name="description" content="Módulo Conciliações Bancárias do NOCTUS.">
+<meta name="robots" content="noindex">
+<link rel="icon" type="image/svg+xml" href="../favicon.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script>
+  /* tema escolhido em Configurações > Aparência; aplicado antes de desenhar a página */
+  try { if (localStorage.getItem("noctus.tema") === "claro") document.documentElement.dataset.tema = "claro"; } catch (e) {}
+</script>
+<script src="../noctus-erros.js"></script>
+<link rel="stylesheet" href="./conciliacoes.css">
+</head>
+<body>
+
+<header class="topo">
+  <h1>Conciliações Bancárias <span>· NOCTUS</span></h1>
+  <a class="voltar" href="../#/">Voltar</a>
+</header>
+
+<!-- Enquanto o módulo está em construção (02/11/2026), só o administrador principal
+     vê o conteúdo; todos os demais continuam vendo esta mensagem. -->
+<main id="em-desenvolvimento" class="centro">
+  <section class="aviso" role="status">
+    <div class="ico" aria-hidden="true">
+      <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9.5 12 4l9 5.5"/><path d="M5.5 10.5v7M10 10.5v7M14 10.5v7M18.5 10.5v7"/><path d="M3 20h18"/></svg>
+    </div>
+    <h2>Módulo em desenvolvimento</h2>
+    <p>As Conciliações Bancárias ainda estão sendo construídas. Em breve estarão disponíveis aqui.</p>
+    <a class="voltar" href="../#/">Voltar ao painel</a>
+  </section>
+</main>
+
+<main id="modulo" class="oculto">
+
+  <!-- 1. escolha da empresa e da conta (vem de contas.js + o código do SCK) -->
+  <section class="cartao" aria-labelledby="escolha-titulo">
+    <h2 id="escolha-titulo">Empresa e conta</h2>
+    <p class="sub" id="escolha-sub">Escolha a conta que vai ser conciliada.</p>
+    <div class="escolha">
+      <label class="campo">
+        <span>Empresa</span>
+        <select id="sel-empresa"></select>
+      </label>
+      <label class="campo">
+        <span>Conta bancária</span>
+        <select id="sel-conta"></select>
+      </label>
+    </div>
+    <p class="conta-detalhe" id="conta-detalhe"></p>
+  </section>
+
+  <!-- 2. os dois campos de importação, independentes -->
+  <section class="cartao cartao-arquivos oculto" id="cartao-arquivos" aria-labelledby="arquivos-titulo">
+    <h2 id="arquivos-titulo">Arquivos da conciliação</h2>
+    <div class="dois-campos">
+      <div class="campo-arquivo">
+        <h3>Relatório de conciliação (SCK)</h3>
+        <div class="solta" id="solta-sck" role="button" tabindex="0" aria-controls="arq-sck">
+          <strong>Clique ou arraste o relatório</strong>
+          <span>Excel exportado do SCK (.xls ou .xlsx)</span>
+        </div>
+        <input type="file" id="arq-sck" class="oculto"
+               accept=".xls,.xlsx,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">
+        <div class="resumo-arquivo" id="resumo-sck" aria-live="polite"></div>
+      </div>
+      <div class="campo-arquivo">
+        <h3>Extrato bancário (.OFX)</h3>
+        <div class="solta" id="solta-ofx" role="button" tabindex="0" aria-controls="arq-ofx">
+          <strong>Clique ou arraste o extrato</strong>
+          <span>Arquivo .OFX baixado no banco</span>
+        </div>
+        <input type="file" id="arq-ofx" class="oculto" accept=".ofx,text/plain,application/x-ofx">
+        <div class="resumo-arquivo" id="resumo-ofx" aria-live="polite"></div>
+      </div>
+    </div>
+    <div id="upload-msg" aria-live="polite"></div>
+  </section>
+
+  <!-- 3. quadro comparativo (modelo A, escolhido pelo Rocha em 02/11/2026) -->
+  <section class="cartao cartao-quadro oculto" id="cartao-quadro" aria-labelledby="quadro-titulo">
+    <div class="quadro-topo">
+      <div>
+        <h2 id="quadro-titulo">Conciliação</h2>
+        <p class="quadro-conta" id="quadro-conta"></p>
+      </div>
+      <span class="pilula" id="quadro-situacao"></span>
+    </div>
+    <div class="cartoes" id="quadro-cartoes"></div>
+    <div id="quadro-nota" class="nota" aria-live="polite"></div>
+    <div id="quadro-aviso" aria-live="polite"></div>
+  </section>
+</main>
+
+<script type="module" src="./conciliacoes.js"></script>
+</body>
+</html>
