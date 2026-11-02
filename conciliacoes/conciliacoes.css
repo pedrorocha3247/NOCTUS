@@ -133,6 +133,8 @@ h2{font-size:.95rem;font-weight:700;margin:0 0 1rem;letter-spacing:-.01em}
 .selo.confere{background:var(--color-green-dim);color:var(--color-green-hover)}
 .selo.divergente{background:var(--cb-pos-fundo);color:var(--cb-pos)}
 .selo.indefinido{background:var(--cb-indef-fundo);color:var(--cb-indef)}
+/* pendente de contabilização (PIX recebido): não é erro de conciliação, por isso não usa a cor de divergência */
+.selo.pendente{background:var(--color-blue-dim);color:var(--color-blue-hover)}
 .kpi-corpo{padding:.9rem 1rem;display:flex;flex-direction:column;gap:.55rem}
 .kpi-linha{display:flex;justify-content:space-between;align-items:baseline;gap:.5rem}
 .kpi-linha dt{color:var(--color-text-secondary);font-size:.82rem}
@@ -150,8 +152,54 @@ h2{font-size:.95rem;font-weight:700;margin:0 0 1rem;letter-spacing:-.01em}
 .nota strong{color:var(--color-text)}
 #quadro-aviso:not(:empty){padding:0 1.5rem 1.25rem}
 
+/* ---------------------------------------------- composição da diferença (regras 1.1 a 1.5) */
+.cartao-composicao{padding:0}
+.bloco-comp{padding:1.25rem 1.5rem 0}
+.bloco-comp:last-child{padding-bottom:1.5rem}
+.bloco-comp h3{margin:0 0 .6rem;font-size:.82rem;font-weight:700;letter-spacing:.04em;text-transform:uppercase;
+  color:var(--color-text-secondary)}
+.rolagem{overflow-x:auto;border:1px solid var(--color-border);border-radius:var(--radius-md)}
+.tabela-comp{width:100%;border-collapse:collapse;font-size:.88rem}
+.tabela-comp th,.tabela-comp td{padding:.6rem .85rem;text-align:left;border-bottom:1px solid var(--color-border);vertical-align:top}
+.tabela-comp thead th{background:var(--color-surface-raised);font-size:.74rem;font-weight:700;letter-spacing:.03em;
+  text-transform:uppercase;color:var(--color-text-secondary);white-space:nowrap}
+.tabela-comp tbody tr:last-child td,.tabela-comp tfoot tr:last-child td{border-bottom:0}
+.tabela-comp .num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.tabela-comp .grupo td{background:var(--color-surface-raised);font-weight:800;font-size:.8rem;letter-spacing:.03em;text-transform:uppercase}
+.tabela-comp .grupo .acao-lancar{color:var(--cb-pos)}
+.tabela-comp .grupo .acao-adicionar{color:var(--color-blue-hover)}
+.tabela-comp .grupo .acao-validar{color:var(--color-warn)}
+.tabela-comp .grupo .acao-divergencia{color:var(--color-error)}
+.tabela-comp .detalhe{display:block;margin-top:.2rem;color:var(--color-text-secondary);font-size:.78rem;overflow-wrap:anywhere}
+.tabela-comp .sub td{padding-top:.35rem;padding-bottom:.35rem;font-size:.8rem;color:var(--color-text-secondary)}
+.tabela-comp .sub td:first-child{padding-left:1.8rem}
+.tabela-comp tfoot td{font-weight:800;background:var(--color-surface-raised)}
+.tabela-comp .total-dif td{border-top:2px solid var(--color-border)}
+
 /* ---------------------------------------------- celular */
 @media (max-width:720px){
   .escolha,.cartao-arquivos .dois-campos,.cartoes{grid-template-columns:minmax(0,1fr)}
+  .bloco-comp{padding:1rem 1rem 0}
+  .bloco-comp:last-child{padding-bottom:1rem}
+  /* no celular cada linha da tabela vira um bloco: espremer colunas quebrava nomes no meio */
+  .tabela-comp thead{display:none}
+  .tabela-comp,.tabela-comp tbody,.tabela-comp tfoot{display:block}
+  .tabela-comp tr{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:.3rem .75rem;padding:.7rem .85rem;
+    border-bottom:1px solid var(--color-border)}
+  .tabela-comp tbody tr:last-child,.tabela-comp tfoot tr:last-child{border-bottom:0}
+  .tabela-comp td,.tabela-comp th{padding:0;border:0;background:none}
+  .tabela-comp tr.grupo,.tabela-comp tfoot tr{background:var(--color-surface-raised)}
+  .tabela-comp tr.grupo td{grid-column:1/-1;background:none}
+  .tabela-comp tfoot td{background:none}
+  .tabela-comp .total-dif{border-top:2px solid var(--color-border)}
+  .tabela-comp .total-dif td{border-top:0}
+  .tabela-comp td:nth-child(3){grid-column:1/-1;color:var(--color-text-secondary);font-size:.82rem}
+  .tabela-comp td:nth-child(3):empty{display:none}
+  .tabela-comp .sub td:first-child{padding-left:.9rem}
+  #tabela-regras td:first-child{grid-column:1/-1}
+  #tabela-regras td[data-rotulo]{grid-column:1/-1;display:flex;justify-content:space-between;gap:.75rem;
+    color:var(--color-text);font-size:.88rem}
+  #tabela-regras td[data-rotulo]::before{content:attr(data-rotulo);color:var(--color-text-secondary);font-size:.8rem}
+  #tabela-regras td:last-child{grid-column:1/-1}
   .quadro-topo{flex-direction:column;align-items:flex-start;gap:.6rem}
 }
