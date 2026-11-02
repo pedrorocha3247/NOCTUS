@@ -123,7 +123,10 @@ function valorAoLado(linhas, i, j) {
  *   { empresa:{codigo,nome}, conta:{codigoSck,descricao,banco,agencia,numero},
  *     data:{iso,rotulo}, status, responsavel,
  *     lancamentos:[{ data, historico, valor, direcao:"entrada"|"saida", secao, contraPartida, rlc }],
+ *     adicionados:{ total, linhas:[{data,historico,valor,direcao}] },
  *     entradas, saidas, totalImpresso, resumo:{...}, alertas:[] }
+ * `lancamentos` traz só o movimento do dia (Marcados e Não Marcados); os
+ * "Lançamentos Adicionados" vêm à parte, em `adicionados`.
  *
  * `entradas` soma a coluna Débito e `saidas` soma a coluna Crédito (regra do Rocha).
  */
@@ -167,29 +170,53 @@ export function lerConciliacaoSck(linhas) {
     throw avisoLeitura(`Não consegui ler o valor de ${ilegiveis.length} lançamento(s) do relatório (${ilegiveis.slice(0, 3).join("; ")}). Confira o arquivo.`);
   }
 
-  const entradas = r2(lancamentos.filter((l) => l.direcao === "entrada").reduce((s, l) => s + l.valor, 0));
-  const saidas = r2(lancamentos.filter((l) => l.direcao === "saida").reduce((s, l) => s + l.valor, 0));
+  /*
+   * "Lançamentos Adicionados" (regra do Rocha, 02/11/2026, relatório das 11:24):
+   * são valores que estão no BANCO e não estão no contábil, acrescentados à mão
+   * na conciliação — no arquivo real, três "REND PAGO APLIC AUT APR" de dias
+   * anteriores (1,43 + 25,53 + 0,04 = 27,00). NÃO são movimento do dia: ficam
+   * fora de entradas/saídas e são devolvidos à parte, para a composição da
+   * diferença tratá-los como "a validar".
+   */
+  const doDia = lancamentos.filter((l) => l.secao !== "adicionados");
+  const adicionadosLinhas = lancamentos.filter((l) => l.secao === "adicionados");
+  const entradas = r2(doDia.filter((l) => l.direcao === "entrada").reduce((s, l) => s + l.valor, 0));
+  const saidas = r2(doDia.filter((l) => l.direcao === "saida").reduce((s, l) => s + l.valor, 0));
+  // com sinal: Débito (entrada no banco) soma, Crédito (saída) subtrai
+  const adicionadosTotal = r2(adicionadosLinhas.reduce((s, l) => s + (l.direcao === "entrada" ? l.valor : -l.valor), 0));
+  const adicionadosBruto = r2(adicionadosLinhas.reduce((s, l) => s + l.valor, 0));
 
-  // conferência contra o "Totais =>" impresso pelo próprio SCK
-  if (totalImpresso != null && Math.abs(r2(entradas + saidas) - totalImpresso) >= 0.005) {
-    alertas.push(`A soma dos lançamentos lidos (${moeda(entradas + saidas)}) é diferente do total impresso no relatório (${moeda(totalImpresso)}).`);
+  // conferência contra o "Totais =>" impresso pelo próprio SCK (soma das seções)
+  const somaLida = r2(entradas + saidas + adicionadosBruto);
+  if (totalImpresso != null && Math.abs(somaLida - totalImpresso) >= 0.005) {
+    alertas.push(`A soma dos lançamentos lidos (${moeda(somaLida)}) é diferente do total impresso no relatório (${moeda(totalImpresso)}).`);
   }
   // histórico que discorda da coluna: não muda o cálculo, só avisa
-  const discordantes = lancamentos.filter((l) => l.direcao === "entrada" && /^\s*(PAGAMENTO|TARIFA|TED ENVIAD|DEB[IÍ]TO)/i.test(l.historico)
+  const discordantes = doDia.filter((l) => l.direcao === "entrada" && /^\s*(PAGAMENTO|TARIFA|TED ENVIAD|DEB[IÍ]TO)/i.test(l.historico)
     && !/DO TITULAR|RECEB/i.test(l.historico));
   if (discordantes.length) {
     alertas.push(`${discordantes.length} lançamento(s) estão na coluna Débito (entrada) mas o histórico começa com "pagamento" ou "tarifa". Confira se a classificação do SCK está certa.`);
   }
   // lançamento com data diferente da data do relatório
-  const foraDaData = lancamentos.filter((l) => l.data && l.data.iso !== data.iso);
+  // (os adicionados são de outros dias por natureza e não entram neste aviso)
+  const foraDaData = doDia.filter((l) => l.data && l.data.iso !== data.iso);
   if (foraDaData.length) {
     alertas.push(`${foraDaData.length} lançamento(s) têm data diferente de ${data.rotulo} e foram somados mesmo assim, como o SCK imprimiu.`);
   }
 
   /* ---------- resumo da conciliação ---------- */
   const resumo = lerResumo(linhas);
+  // o "(+) Saldo dos Lançamentos Adicionados" do resumo tem de bater com as linhas lidas
+  if (resumo.adicionados != null && Math.abs(resumo.adicionados - adicionadosTotal) >= 0.005) {
+    alertas.push(`Os Lançamentos Adicionados lidos somam ${moeda(adicionadosTotal)}, mas o resumo do relatório informa ${moeda(resumo.adicionados)}. Confira o relatório.`);
+  }
 
-  return { empresa, conta, data, status, responsavel, lancamentos,
+  const adicionados = {
+    total: adicionadosTotal,
+    linhas: adicionadosLinhas.map(({ data: d, historico, valor, direcao }) => ({ data: d, historico, valor, direcao })),
+  };
+
+  return { empresa, conta, data, status, responsavel, lancamentos: doDia, adicionados,
            entradas, saidas, totalImpresso, resumo, alertas };
 }
 
@@ -257,6 +284,9 @@ function lerLancamentos(linhas, cab) {
       continue;
     }
     if (i <= iCab) continue;
+    // cada seção repete o cabeçalho das colunas (no relatório com "Lançamentos
+    // Adicionados" ele aparece duas vezes): cabeçalho não é lançamento
+    if (l.some((v) => /^d[ée]bito$/i.test(limpo(v))) && l.some((v) => /^cr[ée]dito$/i.test(limpo(v)))) continue;
     if (/^Totais?\s*=>/i.test(limpo(l.find((v) => /^Totais?\s*=>/i.test(limpo(v))) || ""))) {
       const v = faixa(l, col.debito, fimDebito);
       if (v && v.ilegivel == null) totalImpresso = r2((totalImpresso || 0) + v.valor);
