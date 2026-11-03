@@ -35,6 +35,7 @@ const CHAVE_SESSAO = "sipep.session";
 const TABELA = "controle_bancario_noctus";
 const TABELA_DEBITO = "controle_bancario_debito_noctus";
 const TABELA_LANC = "controle_bancario_lancamentos_noctus";
+const TABELA_VALID = "controle_bancario_validacao_noctus";   // 03/11/2026: checklist opcional de validação por data e empresa
 const TAMANHO_MAXIMO = 10 * 1024 * 1024;   // 10 MB: o relatório real tem ~10 KB
 
 const MSG_FALHA_COMUNICACAO =
@@ -160,6 +161,9 @@ const estado = {
   confirmaExcluir: null, // id do lançamento aguardando "Sim, excluir"
   dialogoIso: null,    // data a que o formulário aberto pertence
   salvandoLanc: false,
+  validacoes: new Map(), // Validação: "iso|chave" → { extrato, comprovantes, suprimento, baixa_compromisso }
+  validFalha: false,     // true quando as validações não puderam ser lidas: nada fica verde e as caixas ficam travadas
+  validAberta: false,    // a tabela de validação começa oculta (funcionalidade opcional)
 };
 
 async function carregarSalvos() {
@@ -219,6 +223,112 @@ async function excluirLancamento(id) {
   });
   const linhas = await r.json();
   if (!Array.isArray(linhas) || linhas.length !== 1) throw new Error("lançamento: exclusão não confirmada pelo servidor");
+}
+
+/* ------------------------------------------------------------ Validação (checklist opcional, modelo 1, 03/11/2026) */
+const ITENS_VALID = [["extrato", "Extrato"], ["comprovantes", "Comprovantes"], ["suprimento", "Suprimento"], ["baixa_compromisso", "Baixa Compromisso"]];
+const VALID_VAZIA = { extrato: false, comprovantes: false, suprimento: false, baixa_compromisso: false };
+/** Chave estável da empresa: o código oficial; sem código, o nome. */
+const chaveEmpresa = (c) => (c.codigo != null && c.codigo !== "" ? String(c.codigo) : `nome:${c.empresa}`);
+const validacaoDe = (iso, chave) => estado.validacoes.get(`${iso}|${chave}`) || null;
+const itensMarcados = (v) => (v ? ITENS_VALID.filter(([k]) => v[k] === true).length : 0);
+/** Concluída = os 4 itens marcados (e as validações lidas sem falha). */
+const validada = (iso, chave) => !estado.validFalha && itensMarcados(validacaoDe(iso, chave)) === ITENS_VALID.length;
+
+/** Lê todas as validações do usuário em páginas (nunca corta em silêncio). */
+async function carregarValidacoes() {
+  const PAGINA = 1000, MAX_PAGINAS = 50;
+  const lidas = [];
+  for (let p = 0; p < MAX_PAGINAS; p++) {
+    const r = await servidor(`${TABELA_VALID}?select=data_relatorio,empresa_chave,extrato,comprovantes,suprimento,baixa_compromisso` +
+      `&order=id.asc&limit=${PAGINA}&offset=${p * PAGINA}`);
+    const linhas = await r.json();
+    if (!Array.isArray(linhas)) throw new Error("validação: resposta inesperada do servidor");
+    lidas.push(...linhas);
+    if (linhas.length < PAGINA) {
+      estado.validacoes.clear();
+      for (const l of lidas) {
+        estado.validacoes.set(`${l.data_relatorio}|${l.empresa_chave}`, {
+          extrato: l.extrato === true, comprovantes: l.comprovantes === true,
+          suprimento: l.suprimento === true, baixa_compromisso: l.baixa_compromisso === true });
+      }
+      estado.validFalha = false;
+      return;
+    }
+  }
+  throw new Error("validação: leitura incompleta");
+}
+
+async function gravarValidacao(iso, chave, empresa) {
+  const v = validacaoDe(iso, chave);
+  if (!v) return;
+  const token = await tokenServidor();
+  const uid = token && idDoToken(token);
+  if (!uid) throw new Error("sem-login");
+  const r = await servidor(`${TABELA_VALID}?on_conflict=auth_user_id,data_relatorio,empresa_chave`, {
+    method: "POST",
+    headers: { Prefer: "resolution=merge-duplicates,return=representation" },
+    body: JSON.stringify([{ auth_user_id: uid, data_relatorio: iso, empresa_chave: chave, empresa: String(empresa).slice(0, 80),
+      extrato: v.extrato, comprovantes: v.comprovantes, suprimento: v.suprimento, baixa_compromisso: v.baixa_compromisso }]),
+  });
+  const linhas = await r.json();
+  if (!Array.isArray(linhas) || linhas.length !== 1) throw new Error("validação: servidor não confirmou a gravação");
+}
+
+const filaValid = new Map();   // "iso|chave" → promessa: as gravações da mesma empresa saem uma depois da outra
+/** Marca/desmarca um item: a tela muda na hora; a gravação vai ao servidor em seguida, em ordem, sempre com o estado mais recente. */
+function marcarValidacao(iso, chave, empresa, item, marcado) {
+  const k = `${iso}|${chave}`;
+  estado.validacoes.set(k, { ...(estado.validacoes.get(k) || VALID_VAZIA), [item]: marcado });
+  atualizarValidacao(iso);
+  const p = (filaValid.get(k) || Promise.resolve()).then(() => gravarValidacao(iso, chave, empresa)).catch(async (e) => {
+    const msg = $("validacao-msg");
+    if (msg) msg.insertAdjacentHTML("afterbegin", alerta("erro", esc(msgErro(e, `Não consegui gravar a validação de ${empresa}`))));
+    // volta ao que o servidor realmente tem, para a tela não mostrar uma validação que não foi salva
+    try { await carregarValidacoes(); } catch { estado.validFalha = true; }
+    atualizarValidacao(iso);
+  });
+  filaValid.set(k, p);
+}
+
+/** Pinta de verde (só o texto) o nome, o Fluxo e o Relatório das empresas com os 4 itens marcados. Não mexe na estrutura da tabela. */
+function pintarValidadas(iso) {
+  for (const el of document.querySelectorAll("#resumo-caixa [data-chave]")) {
+    el.classList.toggle("validada", validada(iso, el.dataset.chave));
+  }
+}
+
+/** Tabela de validação (modelo 1): uma linha por empresa da tabela resumo, os 4 itens em colunas. */
+function desenharValidacao(reg, res) {
+  const bloco = $("validacao");
+  if (!bloco) return;   // defensivo: na publicação o JS vai ao ar antes do HTML
+  bloco.classList.remove("oculto");
+  const aberta = estado.validAberta;
+  const btn = $("btn-validacao");
+  btn.setAttribute("aria-expanded", String(aberta));
+  $("validacao-cartao").classList.toggle("oculto", !aberta);
+  const cols = res.cols;
+  const trava = estado.validFalha ? " disabled" : "";
+  $("validacao-corpo").innerHTML = cols.map((c) => {
+    const chave = chaveEmpresa(c);
+    const v = validacaoDe(reg.iso, chave) || VALID_VAZIA;
+    const n = itensMarcados(v);
+    const caixas = ITENS_VALID.map(([k, rotulo]) =>
+      `<td class="valid-cel"><label class="valid-marca"><input type="checkbox" class="valid-cb" data-item="${k}" data-chave="${esc(chave)}" ` +
+      `data-empresa="${esc(c.empresa)}" aria-label="${esc(rotulo)} de ${esc(c.empresa)}"${v[k] ? " checked" : ""}${trava}></label></td>`).join("");
+    const situacao = estado.validFalha ? "—" : n === ITENS_VALID.length ? "Validado" : `${n} de ${ITENS_VALID.length}`;
+    return `<tr data-chave="${esc(chave)}"><th scope="row">${esc(c.empresa)}</th>${caixas}` +
+      `<td class="valid-sit${n === ITENS_VALID.length && !estado.validFalha ? " ok" : ""}">${situacao}</td></tr>`;
+  }).join("");
+  pintarValidadas(reg.iso);
+}
+
+/** Atualiza situação, caixas e verde sem redesenhar a tabela resumo inteira (que mede colunas e quebra em faixas). */
+function atualizarValidacao(iso) {
+  const reg = estado.atual && estado.datas.get(estado.atual);
+  if (!reg || reg.iso !== iso) return;
+  const deb = estado.debitos.get(reg.iso) || null;
+  desenharValidacao(reg, montarResumo(reg.empresas || [], deb));
 }
 
 async function salvarDebito(deb, arquivo) {
@@ -387,6 +497,7 @@ function desenhar() {
   if (!estado.atual || !estado.datas.has(estado.atual)) {
     cartao.classList.add("oculto");
     $("cartao-resumo")?.classList.add("oculto");
+    $("validacao")?.classList.add("oculto");
     $("painel-lanc")?.classList.add("oculto");
     return;
   }
@@ -497,6 +608,7 @@ function desenharResumo(reg, colMinima = 0) {
   const lancPorEmpresa = porEmpresa(lancsData);
   estado.empresasResumo = res.cols.filter((c) => c.codigo != null && c.codigo !== "").map((c) => ({ codigo: String(c.codigo), empresa: c.empresa, diferenca: c.diferenca }));
   desenharPainel(reg, res, deb, lancsData);
+  desenharValidacao(reg, res);
   const nLanc = (c) => (c.codigo != null ? (lancPorEmpresa.get(String(c.codigo)) || []).length : 0);
 
   // 30/10: todas as empresas à vista, sem rolagem: o quadro cresce até a largura da tela e,
@@ -533,15 +645,18 @@ function desenharResumo(reg, colMinima = 0) {
       ? `<button type="button" class="cab-lanc" data-cod="${esc(c.codigo)}" aria-haspopup="dialog" ` +
         `aria-label="${esc(c.empresa)}: ${plural(nLanc(c), "lançamento", "lançamentos")}. Ver detalhes">${esc(c.empresa)} · ${nLanc(c)}</button>`
       : esc(c.empresa);
-    const cab = grupo.map((c) => `<th scope="col"${c.semFluxo ? ' class="sem-fluxo"' : ""} title="${esc(c.empresa)}">${nome(c)}` +
+    // Validação (03/11/2026): data-chave + classe "validada" só mudam a COR do texto da empresa concluída; a estrutura não muda
+    const atr = (c, extra = "") => ` data-chave="${esc(chaveEmpresa(c))}"` +
+      ` class="${[extra, validada(reg.iso, chaveEmpresa(c)) ? "validada" : ""].filter(Boolean).join(" ")}"`;
+    const cab = grupo.map((c) => `<th scope="col"${atr(c, c.semFluxo ? "sem-fluxo" : "")} title="${esc(c.empresa)}">${nome(c)}` +
       `${c.semFluxo ? '<span class="marca">sem fluxo</span>' : ""}</th>`).join("") + "<th></th>".repeat(porFaixa - grupo.length);
     const linha = (rotulo, classe, valor) =>
       `<tr class="${classe}"><th scope="row">${rotulo}</th>${grupo.map(valor).join("")}${vazias}</tr>`;
     return `<table class="tabela-resumo"${i === 0 ? ' id="resumo-tabela"' : ""} aria-label="Fluxo × Relatório de débito por empresa` +
       `${faixas > 1 ? ` (parte ${i + 1} de ${faixas})` : ""}"><colgroup><col class="rotulo"></colgroup>` +
       `<thead><tr><th scope="col">Empresa</th>${cab}</tr></thead><tbody>` +
-      linha("Fluxo", "fluxo", (c) => `<td>${esc(contabil(c.fluxo))}</td>`) +
-      linha("Relatório", "relatorio", (c) => `<td>${c.relatorio == null ? "—" : esc(contabil(c.relatorio))}</td>`) +
+      linha("Fluxo", "fluxo", (c) => `<td${atr(c)}>${esc(contabil(c.fluxo))}</td>`) +
+      linha("Relatório", "relatorio", (c) => `<td${atr(c)}>${c.relatorio == null ? "—" : esc(contabil(c.relatorio))}</td>`) +
       linha("Diferença", "diferenca", (c) => c.diferenca == null ? "<td>—</td>"
         : `<td><span class="dif ${sinal(c.diferenca) || "zero"}"${dica(c.diferenca) ? ` title="${dica(c.diferenca)}"` : ""}>${esc(contabil(c.diferenca))}</span></td>`) +
       "</tbody></table>";
@@ -875,6 +990,20 @@ function ligarTela() {
   ligar("datas-ant", () => { estado.inicioDatas = Math.max(0, estado.inicioDatas - visiveis()); desenharDatasSemMudar(); });
   ligar("datas-prox", () => { estado.inicioDatas += visiveis(); desenharDatasSemMudar(); });
   ligar("btn-exportar", exportarResumo);
+  // Validação (opcional): o botão mostra/oculta a tabela; as caixas gravam no servidor (defensivo: HTML antigo não tem o bloco)
+  if ($("btn-validacao")) {
+    ligar("btn-validacao", () => {
+      estado.validAberta = !estado.validAberta;
+      const reg = estado.atual && estado.datas.get(estado.atual);
+      if (reg) atualizarValidacao(reg.iso);
+    });
+    $("validacao-corpo").addEventListener("change", (ev) => {
+      const cb = ev.target.closest(".valid-cb");
+      const reg = estado.atual && estado.datas.get(estado.atual);
+      if (!cb || !reg || estado.validFalha) return;
+      marcarValidacao(reg.iso, cb.dataset.chave, cb.dataset.empresa, cb.dataset.item, cb.checked);
+    });
+  }
   // Parte 3: lançamentos (defensivo: HTML antigo não tem o painel)
   if ($("btn-lanc")) {
     ligar("btn-lanc", () => abrirDialogo($("lanc-dialogo").classList.contains("oculto")));
@@ -964,6 +1093,14 @@ async function iniciar() {
     estado.lancFalha = true;
     const m = $("lanc-msg");
     if (m) m.innerHTML = alerta("erro", esc(msgErro(e, "Não consegui carregar os lançamentos")));
+  }
+  // Validação (opcional): se não carregar, nada fica verde, as caixas ficam travadas e o aviso explica (sem texto técnico)
+  try {
+    await carregarValidacoes();
+  } catch (e) {
+    estado.validFalha = true;
+    const m = $("validacao-msg");
+    if (m) m.innerHTML = alerta("erro", esc(msgErro(e, "Não consegui carregar as validações já feitas")));
   }
   desenhar();
 }
