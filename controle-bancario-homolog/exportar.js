@@ -1,32 +1,31 @@
 /**
- * Controle Bancário — NOCTUS. Exportar a tabela resumo (Fluxo × Relatório de débito) para Excel (03/11/2026).
+ * Controle Bancário — NOCTUS. Exportar a tabela resumo (Fluxo × Relatório de débito) para Excel.
  *
- * Gera um .xlsx de verdade (OOXML escrito à mão + ZIP sem compressão), no navegador, sem biblioteca:
- * o SheetJS que o NOCTUS já carrega não grava estilos, e o padrão de planilha do Rocha exige fonte, cores,
- * sem linhas de grade, filtro e painel congelado.
+ * 03/11/2026 (refeito a pedido do Rocha): a planilha reproduz a tela do sistema, na mesma ordem e estrutura:
+ * totais no topo (Fluxo em dd/mm/aaaa, Relatório de débito, Diferença e o selo de divergências), os avisos,
+ * e a tabela com as EMPRESAS NAS COLUNAS e as linhas Fluxo, Relatório e Diferença (diferença laranja quando o
+ * fluxo é maior, vermelha quando o débito é maior, hífen verde quando bate). Visual claro, com as cores do
+ * próprio sistema (tema claro), em Calibri.
  *
- * Padrão (Vinho & Champanhe): Abadi 11 (12 só no título), sem itálico, sem linhas de grade, cabeçalho vinho
- * com texto champanhe, faixa dourada no topo, linha fina bege entre os dados, cabeçalho congelado (só linha),
- * filtro, paisagem. Todo número derivado é FÓRMULA (diferença, situação, totais, cartões, conferência);
- * valores digitados só para o que veio dos relatórios. As fórmulas levam também o valor já calculado, para
- * visualizadores que não recalculam; o Excel recalcula ao abrir.
- *
- * Duas abas: "Resumo" (uma linha por empresa) e "Conferência" (checagens por fórmula + parágrafo pronto).
+ * Gera um .xlsx de verdade (OOXML escrito à mão + ZIP sem compressão), no navegador, sem biblioteca.
+ * Fluxo e Relatório são os valores dos relatórios; Diferença, totais e selo são FÓRMULAS (com o valor já
+ * calculado gravado, para visualizadores que não recalculam; o Excel recalcula ao abrir).
  * Aqui só há conta e montagem de arquivo (sem tela, sem rede), para testar em Node.
  */
 
 const COR = {
-  vinho: "4E1F2C", champanhe: "F1E6D2", dourado: "A8864F", verde: "5E7D5B", ocre: "B98A2A", tijolo: "B23A3A",
-  cinza: "6E6266", dado: "262626", bege: "EAE2DA", fundoProblema: "F5E1E1", fundoAtencao: "F7EDD6", vazio: "A6A6A6",
+  texto: "111827", sec: "4B5563", mudo: "6B7280", borda: "D8DDE5", cab: "F1F3F6", zebra: "F8F9FB", vazio: "9CA3AF",
+  verde: "0C6B3F", laranja: "B54708", laranjaFundo: "FDEBDD", erro: "C62828", erroFundo: "FBEAEA", erroBorda: "E5534B",
+  aviso: "9A6700", avisoFundo: "FBF3E0", avisoBorda: "D9A441",
 };
-const FMT_VALOR = "#,##0.00;[Red]-#,##0.00";
-const FMT_REAIS = '"R$ "#,##0.00';
-const FMT_INT = "0";
+const FONTE = "Calibri";
+const FMT_CONT = '#,##0.00;-#,##0.00;"-"';              // igual à tela: zero vira "-"
+const FMT_REAIS = '"R$ "#,##0.00;-"R$ "#,##0.00';
 
 const r2 = (n) => Math.round(Number(n || 0) * 100) / 100;
 const xml = (t) => String(t ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]))
   .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, "");   // caracteres que o XML não aceita
-const letra = (i) => String.fromCharCode(65 + i);                // colunas A..Z (aqui são no máximo 6)
+const letra = (i) => { let s = "", n = i + 1; while (n > 0) { const m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = Math.floor((n - 1) / 26); } return s; };
 const fixed2 = (v) => r2(v).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 /* ------------------------------------------------------------------ estilos */
@@ -35,12 +34,11 @@ function novoEstilo() {
   const bordas = ["<border><left/><right/><top/><bottom/><diagonal/></border>"], fmts = [], xfs = [], dxfs = [];
   const acha = (lista, item) => { let i = lista.indexOf(item); if (i < 0) { lista.push(item); i = lista.length - 1; } return i; };
   const fonte = (tam, neg, cor) => acha(fontes,
-    `<font>${neg ? "<b/>" : ""}<sz val="${tam}"/><color rgb="FF${cor}"/><name val="Abadi"/><family val="2"/></font>`);
-  fonte(11, false, COR.dado);   // fonte 0 = padrão do arquivo: Abadi 11 (células vazias também)
+    `<font>${neg ? "<b/>" : ""}<sz val="${tam}"/><color rgb="FF${cor}"/><name val="${FONTE}"/><family val="2"/></font>`);
+  fonte(11, false, COR.texto);   // fonte 0 = padrão do arquivo
   const lado = (nome, d) => d ? `<${nome} style="${d.estilo}"><color rgb="FF${d.cor}"/></${nome}>` : `<${nome}/>`;
   const registro = new Map();
-  /** Devolve o índice do estilo de célula. Mesmo pedido, mesmo índice. */
-  function xf({ tam = 11, neg = false, cor = COR.dado, fundo = null, borda = null, fmt = null, h = null, recuo = 0, quebra = false, v = "center" } = {}) {
+  function xf({ tam = 11, neg = false, cor = COR.texto, fundo = null, borda = null, fmt = null, h = null, recuo = 0, quebra = false, v = "center" } = {}) {
     const chave = JSON.stringify([tam, neg, cor, fundo, borda, fmt, h, recuo, quebra, v]);
     if (registro.has(chave)) return registro.get(chave);
     const fo = fonte(tam, neg, cor);
@@ -53,7 +51,7 @@ function novoEstilo() {
     registro.set(chave, xfs.length - 1);
     return xfs.length - 1;
   }
-  /** Formato condicional: só cor, negrito e fundo (o tamanho vem da célula). */
+  /** Formato condicional: cor, negrito e fundo. */
   function dxf({ cor = null, neg = false, fundo = null }) {
     return acha(dxfs, `<dxf>${cor || neg ? `<font>${neg ? "<b/>" : ""}${cor ? `<color rgb="FF${cor}"/>` : ""}</font>` : ""}` +
       `${fundo ? `<fill><patternFill><bgColor rgb="FF${fundo}"/></patternFill></fill>` : ""}</dxf>`);
@@ -81,11 +79,15 @@ function novaAba() {
   const ref = (c, n) => `${letra(c)}${n}`;
   return {
     altura(n, ht) { linha(n).ht = ht; },
-    /** Texto fixo. */
     texto(c, n, t, s) { linha(n).celulas.set(c, `<c r="${ref(c, n)}" s="${s}" t="inlineStr"><is><t xml:space="preserve">${xml(t)}</t></is></c>`); },
+    /** Texto com trechos de estilos diferentes: partes = [{ t, tam, neg, cor }]. */
+    rico(c, n, partes, s) {
+      const runs = partes.map((p) => `<r><rPr>${p.neg ? "<b/>" : ""}<sz val="${p.tam}"/><color rgb="FF${p.cor}"/><rFont val="${FONTE}"/><family val="2"/></rPr>` +
+        `<t xml:space="preserve">${xml(p.t)}</t></r>`).join("");
+      linha(n).celulas.set(c, `<c r="${ref(c, n)}" s="${s}" t="inlineStr"><is>${runs}</is></c>`);
+    },
     numero(c, n, v, s) { linha(n).celulas.set(c, `<c r="${ref(c, n)}" s="${s}"><v>${r2(v)}</v></c>`); },
     vazia(c, n, s) { linha(n).celulas.set(c, `<c r="${ref(c, n)}" s="${s}"/>`); },
-    /** Fórmula com o valor já calculado (número ou texto). */
     formula(c, n, f, valor, s) {
       const txt = typeof valor === "string";
       linha(n).celulas.set(c, `<c r="${ref(c, n)}" s="${s}"${txt ? ' t="str"' : ""}><f>${xml(f)}</f><v>${txt ? xml(valor) : r2(valor)}</v></c>`);
@@ -96,12 +98,11 @@ function novaAba() {
         return `<row r="${n}"${l.ht ? ` ht="${l.ht}" customHeight="1"` : ""}>${[...l.celulas.keys()].sort((a, b) => a - b).map((c) => l.celulas.get(c)).join("")}</row>`;
       }).join("");
     },
-    ultimaLinha: () => Math.max(...linhas.keys()),
   };
 }
 
 const rodape = (fonte) => {
-  const f = '&"Abadi,Regular"&11';
+  const f = `&"${FONTE},Regular"&10`;
   const t = String(fonte || "").replace(/&/g, "&&");
   return `<headerFooter><oddFooter>${xml(`&L${f}${t}&C${f}Gerado em &D&R${f}Página &P de &N`)}</oddFooter></headerFooter>`;
 };
@@ -147,197 +148,150 @@ export function nomeArquivoResumo(iso) {
   return `Controle_Bancario_Tabela_Resumo_${m ? `${m[3]}${m[2]}${m[1]}` : "data"}.xlsx`;
 }
 
+/** Textos dos avisos: os mesmos que a tela mostra acima da tabela. erro = vermelho, senão âmbar. */
+function textosAvisos(avisos, rotulo) {
+  const out = [];
+  for (const a of avisos || []) {
+    if (a.tipo === "semFluxo") out.push({ erro: false, t: `${a.empresa} tem débito de R$ ${fixed2(a.total)} no relatório, sem valor no fluxo de ${rotulo}.` });
+    if (a.tipo === "semConta") out.push({ erro: true, t: `R$ ${fixed2(a.total)} debitados em conta bancária não cadastrada no NOCTUS: não entraram em nenhuma empresa. Confira o relatório.` });
+    if (a.tipo === "naoConfere") out.push({ erro: true, t: `${a.empresa}: o total impresso no relatório (R$ ${fixed2(a.total)}) não bate com a soma das solicitações (R$ ${fixed2(a.soma)}). Confira o relatório.` });
+    if (a.tipo === "semCodigo") out.push({ erro: false, t: `${a.empresa} está no fluxo, mas não tem código de empresa cadastrado: não dá para comparar com o relatório.` });
+  }
+  return out;
+}
+
 /**
  * @param {object} p
- *   iso, rotulo ("03/11/2026"), cols (montarResumo().cols), total, divergencias, avisos (montarResumo().avisos),
+ *   iso, rotulo ("03/11/2026"), cols (montarResumo().cols), total, avisos (montarResumo().avisos),
+ *   lanc (opcional, uma contagem por coluna: lançamentos da empresa na data, mostrada como "NOME · n" igual à tela),
  *   arquivoFluxo, arquivoDebito (nomes dos arquivos importados, para o rodapé), agora (Date, só para teste)
  * @returns {Uint8Array} conteúdo do .xlsx
  */
-export function gerarXlsxResumo({ iso, rotulo, cols, total, avisos = [], arquivoFluxo = "", arquivoDebito = "", agora = new Date() }) {
+export function gerarXlsxResumo({ iso, rotulo, cols, total, avisos = [], lanc = [], arquivoFluxo = "", arquivoDebito = "", agora = new Date() }) {
   if (!Array.isArray(cols) || !cols.length) throw new Error("tabela resumo vazia");
   if (total?.relatorio == null) throw new Error("sem relatório de débito");
   const est = novoEstilo();
-
-  /* ============ aba Resumo ============ */
   const A = novaAba();
-  const NCOL = 6;
-  const R_CARTAO = 6, R_CAB = 9, R_INI = 10, R_FIM = R_INI + cols.length - 1, R_TOT = R_FIM + 1;
-  const sFaixa = est.xf({ fundo: COR.dourado });
-  A.altura(1, 4); for (let c = 0; c < NCOL; c++) A.vazia(c, 1, sFaixa);
-  A.altura(2, 24); A.texto(0, 2, "Tabela resumo Fluxo × Relatório de débito", est.xf({ tam: 12, neg: true, cor: COR.vinho }));
-  A.texto(0, 3, `Controle Bancário · Fluxo em ${rotulo} · ${cols.length} ${cols.length === 1 ? "empresa" : "empresas"}`, est.xf({ cor: COR.cinza }));
+  const merges = [];
+  const N = cols.length;                       // empresas
+  const ULT = Math.max(N, 6);                  // última coluna usada (índice): no mínimo G, para caber o topo
+  const col = (i) => letra(i);
+  const textosAv = textosAvisos(avisos, rotulo);
 
-  // totais por fórmula (valores já calculados para quem não recalcula)
+  // linhas
+  const R_LAB = 2, R_VAL = 3, R_ESP = 4, R_AV = 5;
+  const R_CAB = R_AV + textosAv.length, R_FLX = R_CAB + 1, R_REL = R_CAB + 2, R_DIF = R_CAB + 3;
+  const intervalo = (r) => `B${r}:${col(N)}${r}`;
+
+  // valores calculados (cópia para quem não recalcula)
+  const difDe = (c) => (c.relatorio == null ? null : r2(c.fluxo - c.relatorio));
   const somaFluxo = r2(cols.reduce((s, c) => s + c.fluxo, 0));
   const somaRel = r2(cols.reduce((s, c) => s + (c.relatorio == null ? 0 : c.relatorio), 0));
-  const difLinha = (c) => (c.relatorio == null ? null : r2(c.fluxo - c.relatorio));
-  const situacao = (d) => (d == null ? "Não comparado" : d === 0 ? "Confere" : d > 0 ? "Fluxo maior" : "Relatório maior");
-  const somaDif = r2(cols.reduce((s, c) => s + (difLinha(c) == null ? 0 : difLinha(c)), 0));
-  const nDiverg = cols.filter((c) => { const d = difLinha(c); return d != null && d !== 0; }).length;
+  const somaDif = r2(somaFluxo - somaRel);
+  const nDiverg = cols.filter((c) => { const d = difDe(c); return d != null && d !== 0; }).length;
+  const textoSelo = nDiverg === 0 ? "Sem divergência" : `${nDiverg} ${nDiverg === 1 ? "divergência" : "divergências"}`;
 
-  // cartões (linhas 6 e 7): rótulo em maiúsculas e valor; barra esquerda na cor do status
-  const cartao = (c, rotulo2, formula, valor, fmt, corBarra, corTexto) => {
-    const borda = { left: { estilo: "medium", cor: corBarra } };
-    A.texto(c, R_CARTAO, rotulo2, est.xf({ neg: true, cor: COR.cinza, borda, recuo: 1 }));
-    A.formula(c, R_CARTAO + 1, formula, valor, est.xf({ neg: true, cor: corTexto, borda, fmt, h: "left", recuo: 1 }));
-  };
-  A.altura(R_CARTAO, 20); A.altura(R_CARTAO + 1, 22);
-  cartao(0, "EMPRESAS", `COUNTA(A${R_INI}:A${R_FIM})`, cols.length, FMT_INT, COR.dourado, COR.dourado);
-  cartao(2, "FLUXO", `C${R_TOT}`, somaFluxo, FMT_REAIS, COR.dourado, COR.dourado);
-  cartao(3, "RELATÓRIO DE DÉBITO", `D${R_TOT}`, somaRel, FMT_REAIS, COR.dourado, COR.dourado);
-  cartao(4, "DIFERENÇA", `E${R_TOT}`, somaDif, FMT_REAIS, somaDif === 0 ? COR.verde : COR.ocre, somaDif === 0 ? COR.verde : COR.ocre);
-  cartao(5, "DIVERGÊNCIAS", `COUNTIF(F${R_INI}:F${R_FIM},"Fluxo maior")+COUNTIF(F${R_INI}:F${R_FIM},"Relatório maior")`, nDiverg, FMT_INT,
-    nDiverg === 0 ? COR.verde : COR.tijolo, nDiverg === 0 ? COR.verde : COR.tijolo);
+  /* ---- topo: totais e selo ---- */
+  A.altura(1, 10);
+  A.altura(R_LAB, 20); A.altura(R_VAL, 34); A.altura(R_ESP, 12);
+  const sRot = est.xf({ tam: 10, neg: true, cor: COR.sec, h: "left", v: "bottom", recuo: 1 });
+  const sKpi = (cor = COR.texto) => est.xf({ tam: 18, neg: true, cor, fmt: FMT_REAIS, h: "left", recuo: 1 });
+  A.texto(0, R_LAB, `FLUXO EM ${rotulo}`, sRot);
+  A.formula(0, R_VAL, `SUM(${intervalo(R_FLX)})`, somaFluxo, sKpi());
+  A.texto(1, R_LAB, "RELATÓRIO DE DÉBITO", sRot); A.vazia(2, R_LAB, sRot); merges.push(`B${R_LAB}:C${R_LAB}`);
+  A.formula(1, R_VAL, `SUM(${intervalo(R_REL)})`, somaRel, sKpi()); A.vazia(2, R_VAL, sKpi()); merges.push(`B${R_VAL}:C${R_VAL}`);
+  A.texto(3, R_LAB, "DIFERENÇA", sRot); A.vazia(4, R_LAB, sRot); merges.push(`D${R_LAB}:E${R_LAB}`);
+  A.formula(3, R_VAL, `ROUND(A${R_VAL}-B${R_VAL},2)`, somaDif, sKpi()); A.vazia(4, R_VAL, sKpi()); merges.push(`D${R_VAL}:E${R_VAL}`);
+  const sSelo = est.xf({ neg: true, cor: COR.texto, fundo: COR.cab, h: "center" });
+  const nF = `SUMPRODUCT(--ISNUMBER(${intervalo(R_DIF)}),--(${intervalo(R_DIF)}<>0))`;
+  A.formula(ULT - 1, R_VAL, `IF(${nF}=0,"Sem divergência",${nF}&IF(${nF}=1," divergência"," divergências"))`, textoSelo, sSelo);
+  A.vazia(ULT, R_VAL, sSelo); merges.push(`${col(ULT - 1)}${R_VAL}:${col(ULT)}${R_VAL}`);
+  const sEsp = est.xf({ borda: { bottom: { estilo: "thin", cor: COR.borda } } });
+  for (let c = 0; c <= ULT; c++) A.vazia(c, R_ESP, sEsp);
 
-  // cabeçalho da tabela
-  A.altura(R_CAB, 32);
-  const cab = (h, recuo = 0) => est.xf({ neg: true, cor: COR.champanhe, fundo: COR.vinho, h, recuo, quebra: true });
-  A.texto(0, R_CAB, "Empresa", cab("left", 1)); A.texto(1, R_CAB, "Cód.", cab("center"));
-  A.texto(2, R_CAB, "Fluxo (R$)", cab("right")); A.texto(3, R_CAB, "Relatório de débito (R$)", cab("right"));
-  A.texto(4, R_CAB, "Diferença (R$)", cab("right")); A.texto(5, R_CAB, "Situação", cab("center"));
+  /* ---- avisos (mesmo texto da tela) ---- */
+  textosAv.forEach((a, i) => {
+    const n = R_AV + i;
+    const s = est.xf({ cor: a.erro ? COR.erro : COR.aviso, fundo: a.erro ? COR.erroFundo : COR.avisoFundo, h: "left", recuo: 1, quebra: true,
+      borda: { left: { estilo: "medium", cor: a.erro ? COR.erroBorda : COR.avisoBorda } } });
+    A.altura(n, a.t.length > 120 ? 36 : 24);
+    A.texto(0, n, a.t, s);
+    for (let c = 1; c <= ULT; c++) A.vazia(c, n, s);
+    merges.push(`A${n}:${col(ULT)}${n}`);
+  });
 
-  // dados
-  const linhaFina = { bottom: { estilo: "thin", cor: COR.bege } };
-  const sNome = est.xf({ borda: linhaFina, h: "left", recuo: 1 }), sCod = est.xf({ borda: linhaFina, h: "center" });
-  const sVal = est.xf({ borda: linhaFina, fmt: FMT_VALOR, h: "right" }), sSit = est.xf({ borda: linhaFina, h: "center" });
-  const sVazioDireita = est.xf({ cor: COR.vazio, borda: linhaFina, h: "right" }), sVazioCentro = est.xf({ cor: COR.vazio, borda: linhaFina, h: "center" });
+  /* ---- tabela: EMPRESA | empresas nas colunas ---- */
+  const bFina = { bottom: { estilo: "thin", cor: COR.borda } };
+  const temSemFluxo = cols.some((c) => c.semFluxo);
+  A.altura(R_CAB, temSemFluxo ? 38 : 28);
+  const sCabRot = est.xf({ tam: 10, neg: true, cor: COR.sec, fundo: COR.cab, h: "left", recuo: 1, quebra: true, borda: bFina });
+  const sCab = est.xf({ tam: 10, neg: true, cor: COR.sec, fundo: COR.cab, h: "right", recuo: 1, quebra: true, borda: bFina });
+  A.texto(0, R_CAB, "EMPRESA", sCabRot);
   cols.forEach((c, i) => {
-    const n = R_INI + i, d = difLinha(c);
-    A.altura(n, 20);
-    A.texto(0, n, c.empresa, sNome);
-    if (c.codigo != null && c.codigo !== "") { if (/^\d+$/.test(String(c.codigo))) A.numero(1, n, Number(c.codigo), est.xf({ borda: linhaFina, h: "center", fmt: FMT_INT })); else A.texto(1, n, String(c.codigo), sCod); }
-    else A.texto(1, n, "—", sVazioCentro);
-    A.numero(2, n, c.fluxo, sVal);
-    if (c.relatorio == null) A.texto(3, n, "—", sVazioDireita); else A.numero(3, n, c.relatorio, sVal);
-    A.formula(4, n, `IF(ISNUMBER(D${n}),ROUND(C${n}-D${n},2),"—")`, d == null ? "—" : d, d == null ? sVazioDireita : sVal);
-    A.formula(5, n, `IF(NOT(ISNUMBER(E${n})),"Não comparado",IF(E${n}=0,"Confere",IF(E${n}>0,"Fluxo maior","Relatório maior")))`, situacao(d), sSit);
+    const nome = String(c.empresa).toUpperCase() + (lanc[i] > 0 ? ` · ${lanc[i]}` : "");
+    if (c.semFluxo) A.rico(i + 1, R_CAB, [{ t: nome, tam: 10, neg: true, cor: COR.sec }, { t: "\nSEM FLUXO", tam: 8, neg: true, cor: COR.aviso }], sCab);
+    else A.texto(i + 1, R_CAB, nome, sCab);
   });
 
-  // linha de TOTAL (SUBTOTAL respeita o filtro)
-  const bTot = { top: { estilo: "thin", cor: COR.vinho } };
-  A.altura(R_TOT, 22);
-  A.texto(0, R_TOT, "TOTAL", est.xf({ neg: true, cor: COR.vinho, borda: bTot, h: "left", recuo: 1 }));
-  A.vazia(1, R_TOT, est.xf({ neg: true, cor: COR.vinho, borda: bTot }));
-  const sTot = est.xf({ neg: true, cor: COR.vinho, borda: bTot, fmt: FMT_VALOR, h: "right" });
-  A.formula(2, R_TOT, `SUBTOTAL(9,C${R_INI}:C${R_FIM})`, somaFluxo, sTot);
-  A.formula(3, R_TOT, `SUBTOTAL(9,D${R_INI}:D${R_FIM})`, somaRel, sTot);
-  A.formula(4, R_TOT, `SUBTOTAL(9,E${R_INI}:E${R_FIM})`, somaDif, sTot);
-  A.vazia(5, R_TOT, est.xf({ neg: true, cor: COR.vinho, borda: bTot }));
+  A.altura(R_FLX, 26); A.altura(R_REL, 26); A.altura(R_DIF, 30);
+  const sRotulo = (fundo, borda) => est.xf({ neg: true, cor: COR.texto, fundo, h: "left", recuo: 1, borda });
+  const bTopo = { top: { estilo: "thin", cor: COR.borda }, bottom: { estilo: "thin", cor: COR.borda } };
+  A.texto(0, R_FLX, "Fluxo", sRotulo(null, bFina));
+  A.texto(0, R_REL, "Relatório", sRotulo(COR.zebra, bFina));
+  A.texto(0, R_DIF, "Diferença", sRotulo(null, bTopo));
+  const sFlx = est.xf({ neg: true, fmt: FMT_CONT, h: "right", recuo: 1, borda: bFina });
+  const sRel = est.xf({ neg: true, fmt: FMT_CONT, h: "right", recuo: 1, fundo: COR.zebra, borda: bFina });
+  const sRelVazio = est.xf({ neg: true, cor: COR.vazio, h: "right", recuo: 1, fundo: COR.zebra, borda: bFina });
+  const sDif = est.xf({ neg: true, fmt: FMT_CONT, h: "right", recuo: 1, borda: bTopo });
+  const sDifVazio = est.xf({ neg: true, cor: COR.vazio, h: "right", recuo: 1, borda: bTopo });
+  cols.forEach((c, i) => {
+    const k = i + 1, L = col(k), d = difDe(c);
+    A.numero(k, R_FLX, c.fluxo, sFlx);
+    if (c.relatorio == null) A.texto(k, R_REL, "—", sRelVazio); else A.numero(k, R_REL, c.relatorio, sRel);
+    A.formula(k, R_DIF, `IF(ISNUMBER(${L}${R_REL}),ROUND(${L}${R_FLX}-${L}${R_REL},2),"—")`, d == null ? "—" : d, d == null ? sDifVazio : sDif);
+  });
 
-  // formatação condicional: o status colore a linha e a palavra
-  const dxAt = est.dxf({ fundo: COR.fundoAtencao }), dxPr = est.dxf({ fundo: COR.fundoProblema });
-  const dxOk = est.dxf({ cor: COR.verde }), dxOc = est.dxf({ cor: COR.ocre, neg: true }), dxTj = est.dxf({ cor: COR.tijolo, neg: true });
-  const cfResumo =
-    `<conditionalFormatting sqref="A${R_INI}:F${R_FIM}">` +
-      `<cfRule type="expression" dxfId="${dxAt}" priority="1"><formula>$F${R_INI}="Fluxo maior"</formula></cfRule>` +
-      `<cfRule type="expression" dxfId="${dxPr}" priority="2"><formula>$F${R_INI}="Relatório maior"</formula></cfRule></conditionalFormatting>` +
-    `<conditionalFormatting sqref="F${R_INI}:F${R_FIM}">` +
-      `<cfRule type="cellIs" dxfId="${dxOk}" priority="3" operator="equal"><formula>"Confere"</formula></cfRule>` +
-      `<cfRule type="cellIs" dxfId="${dxOc}" priority="4" operator="equal"><formula>"Fluxo maior"</formula></cfRule>` +
-      `<cfRule type="cellIs" dxfId="${dxTj}" priority="5" operator="equal"><formula>"Relatório maior"</formula></cfRule></conditionalFormatting>` +
-    `<conditionalFormatting sqref="E${R_CARTAO + 1}">` +
-      `<cfRule type="cellIs" dxfId="${dxOk}" priority="6" operator="equal"><formula>0</formula></cfRule>` +
-      `<cfRule type="cellIs" dxfId="${dxOc}" priority="7" operator="notEqual"><formula>0</formula></cfRule></conditionalFormatting>` +
-    `<conditionalFormatting sqref="F${R_CARTAO + 1}">` +
-      `<cfRule type="cellIs" dxfId="${dxOk}" priority="8" operator="equal"><formula>0</formula></cfRule>` +
-      `<cfRule type="cellIs" dxfId="${dxTj}" priority="9" operator="greaterThan"><formula>0</formula></cfRule></conditionalFormatting>`;
+  /* ---- cores da diferença (iguais às da tela): laranja = fluxo maior, vermelho = débito maior, verde = bate ---- */
+  const dxLar = est.dxf({ cor: COR.laranja, neg: true, fundo: COR.laranjaFundo });
+  const dxVer = est.dxf({ cor: COR.erro, neg: true, fundo: COR.erroFundo });
+  const dxOk = est.dxf({ cor: COR.verde, neg: true });
+  const dxLarT = est.dxf({ cor: COR.laranja, neg: true }), dxVerT = est.dxf({ cor: COR.erro, neg: true });
+  const t = `B${R_DIF}`;
+  const cf =
+    `<conditionalFormatting sqref="${intervalo(R_DIF)}">` +
+      `<cfRule type="expression" dxfId="${dxLar}" priority="1"><formula>AND(ISNUMBER(${t}),${t}&gt;0)</formula></cfRule>` +
+      `<cfRule type="expression" dxfId="${dxVer}" priority="2"><formula>AND(ISNUMBER(${t}),${t}&lt;0)</formula></cfRule>` +
+      `<cfRule type="expression" dxfId="${dxOk}" priority="3"><formula>AND(ISNUMBER(${t}),${t}=0)</formula></cfRule></conditionalFormatting>` +
+    `<conditionalFormatting sqref="D${R_VAL}">` +
+      `<cfRule type="cellIs" dxfId="${dxLarT}" priority="4" operator="greaterThan"><formula>0</formula></cfRule>` +
+      `<cfRule type="cellIs" dxfId="${dxVerT}" priority="5" operator="lessThan"><formula>0</formula></cfRule></conditionalFormatting>`;
 
-  const fonteTxt = [arquivoFluxo, arquivoDebito].filter(Boolean).map((t) => String(t).slice(0, 60)).join(" e ");
-  const planilha1 =
+  /* ---- larguras: pelo maior nome ou valor de cada coluna ---- */
+  const larg = [];
+  larg[0] = Math.max(26, `FLUXO EM ${rotulo}`.length * 1.25 + 4, `R$ ${fixed2(somaFluxo)}`.length * 2 + 2);
+  for (let c = 1; c <= ULT; c++) {
+    const e = cols[c - 1];
+    if (!e) { larg[c] = 17; continue; }
+    const nome = String(e.empresa).toUpperCase() + (lanc[c - 1] > 0 ? ` · ${lanc[c - 1]}` : "");
+    const vals = [e.fluxo, e.relatorio, difDe(e)].filter((v) => v != null).map((v) => fixed2(v).length);
+    larg[c] = Math.max(17, Math.ceil(nome.length * 1.15 + 3), Math.max(...vals) * 1.2 + 4);
+  }
+  const colsXml = larg.map((w, i) => `<col min="${i + 1}" max="${i + 1}" width="${Math.round(w * 10) / 10}" customWidth="1"/>`).join("");
+
+  const fonteTxt = [arquivoFluxo, arquivoDebito].filter(Boolean).map((x) => String(x).slice(0, 60)).join(" e ");
+  const planilha =
     '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
     '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">' +
     '<sheetPr><pageSetUpPr fitToPage="1"/></sheetPr>' +
-    `<dimension ref="A1:F${R_TOT}"/>` +
-    `<sheetViews><sheetView showGridLines="0" tabSelected="1" zoomScale="90" zoomScaleNormal="90" workbookViewId="0">` +
-      `<pane ySplit="${R_CAB}" topLeftCell="A${R_INI}" activePane="bottomLeft" state="frozen"/><selection pane="bottomLeft" activeCell="A${R_INI}" sqref="A${R_INI}"/></sheetView></sheetViews>` +
+    `<dimension ref="A1:${col(ULT)}${R_DIF}"/>` +
+    '<sheetViews><sheetView showGridLines="0" tabSelected="1" workbookViewId="0">' +
+      '<pane xSplit="1" topLeftCell="B1" activePane="topRight" state="frozen"/><selection pane="topRight" activeCell="B1" sqref="B1"/></sheetView></sheetViews>' +
     '<sheetFormatPr defaultRowHeight="20" customHeight="1"/>' +
-    '<cols><col min="1" max="1" width="30" customWidth="1"/><col min="2" max="2" width="9" customWidth="1"/><col min="3" max="3" width="21" customWidth="1"/>' +
-      '<col min="4" max="4" width="25" customWidth="1"/><col min="5" max="5" width="21" customWidth="1"/><col min="6" max="6" width="21" customWidth="1"/></cols>' +
+    `<cols>${colsXml}</cols>` +
     `<sheetData>${A.dados()}</sheetData>` +
-    `<autoFilter ref="A${R_CAB}:F${R_FIM}"/>` +
-    cfResumo +
-    '<pageMargins left="0.5" right="0.5" top="0.75" bottom="0.75" header="0.3" footer="0.3"/>' +
-    '<pageSetup paperSize="9" orientation="landscape" fitToWidth="1" fitToHeight="0"/>' +
-    rodape(`Fonte: ${fonteTxt || "relatórios do Controle Bancário"}`) + '</worksheet>';
-
-  /* ============ aba Conferência ============ */
-  const B = novaAba();
-  const rng = (col) => `Resumo!${col}${R_INI}:${col}${R_FIM}`;
-  const semConta = r2(avisos.filter((a) => a.tipo === "semConta").reduce((s, a) => s + Number(a.total || 0), 0));
-  const nomes = cols.map((c) => c.empresa);
-  const repetidas = nomes.filter((n) => nomes.filter((m) => m === n).length > 1).length;
-  const naoComp = cols.filter((c) => c.relatorio == null).length;
-  // [nome, esperado, formula do encontrado, valor encontrado, formato]
-  const checagens = [
-    ["Quantidade: empresas na tabela", cols.length, `COUNTA(${rng("A")})`, cols.length, FMT_INT],
-    ["Soma: fluxo das empresas × total do fluxo", total.fluxo, `SUM(${rng("C")})`, somaFluxo, FMT_VALOR],
-    ["Soma: relatório das empresas × total do relatório de débito", total.relatorio, `SUM(${rng("D")})`, somaRel, FMT_VALOR],
-    ["Integridade: fluxo menos relatório × soma das diferenças", total.diferenca, `SUM(${rng("E")})`, somaDif, FMT_VALOR],
-    ["Duplicidade: empresas repetidas", 0, `SUMPRODUCT(--(COUNTIF(${rng("A")},${rng("A")})>1))`, repetidas, FMT_INT],
-    ["Cobertura: empresas sem código, não comparadas", 0, `COUNTIF(${rng("F")},"Não comparado")`, naoComp, FMT_INT],
-    ["Relatório: valor debitado em conta não cadastrada", 0, null, semConta, FMT_VALOR],
-  ];
-  const C_CAB = 8, C_INI = 9, C_FIM = C_INI + checagens.length - 1;
-  B.altura(1, 4); for (let c = 0; c < 5; c++) B.vazia(c, 1, sFaixa);
-  B.altura(2, 24); B.texto(0, 2, "Conferência da tabela resumo", est.xf({ tam: 12, neg: true, cor: COR.vinho }));
-  B.texto(0, 3, `Controle Bancário · Fluxo em ${rotulo}`, est.xf({ cor: COR.cinza }));
-
-  const falhas = checagens.filter(([, esp, , enc]) => r2(enc - esp) !== 0).length;
-  const statusGeral = falhas === 0 ? "CONFERIDO" : "COM PENDÊNCIAS";
-  const bStatus = { left: { estilo: "medium", cor: falhas === 0 ? COR.verde : COR.tijolo } };
-  B.altura(5, 20); B.altura(6, 22);
-  B.texto(0, 5, "STATUS GERAL", est.xf({ neg: true, cor: COR.cinza, borda: bStatus, recuo: 1 }));
-  B.formula(0, 6, `IF(COUNTIF(E${C_INI}:E${C_FIM},"FALHA")=0,"CONFERIDO","COM PENDÊNCIAS")`, statusGeral,
-    est.xf({ neg: true, cor: falhas === 0 ? COR.verde : COR.tijolo, borda: bStatus, h: "left", recuo: 1 }));
-
-  B.altura(C_CAB, 32);
-  B.texto(0, C_CAB, "Checagem", cab("left", 1)); B.texto(1, C_CAB, "Esperado", cab("right")); B.texto(2, C_CAB, "Encontrado", cab("right"));
-  B.texto(3, C_CAB, "Diferença", cab("right")); B.texto(4, C_CAB, "Resultado", cab("center"));
-  checagens.forEach(([nome, esp, f, enc, fmt], i) => {
-    const n = C_INI + i, dif = r2(enc - esp), ok = dif === 0;
-    const sv = est.xf({ borda: linhaFina, fmt, h: "right" });
-    B.altura(n, 20);
-    B.texto(0, n, nome, sNome);
-    B.numero(1, n, esp, sv);
-    if (f) B.formula(2, n, f, enc, sv); else B.numero(2, n, enc, sv);
-    B.formula(3, n, `ROUND(C${n}-B${n},2)`, dif, sv);
-    B.formula(4, n, `IF(ROUND(C${n}-B${n},2)=0,"OK","FALHA")`, ok ? "OK" : "FALHA", sSit);
-  });
-
-  const dxFalha = est.dxf({ cor: COR.tijolo, neg: true, fundo: COR.fundoProblema });
-  const R_RES = C_FIM + 2, R_PAR = R_RES + 1;
-  B.altura(R_RES, 24); B.texto(0, R_RES, "Resumo", est.xf({ tam: 12, neg: true, cor: COR.vinho }));
-  const aresta = (c) => `Resumo!${c}${R_TOT}`;
-  const paragrafo =
-    `Foram conferidas ${cols.length} empresas: fluxo de R$ ${fixed2(somaFluxo)}, relatório de débito de R$ ${fixed2(somaRel)} e diferença de R$ ${fixed2(somaDif)}. ` +
-    `${nDiverg === 0 ? "Nenhuma empresa com divergência." : `${nDiverg} empresa(s) com divergência.`} ` +
-    `${falhas === 0 ? "Todas as checagens da planilha fecharam." : `${falhas} checagem(ns) com falha.`}`;
-  const fParagrafo =
-    `"Foram conferidas "&Resumo!A${R_CARTAO + 1}&" empresas: fluxo de R$ "&FIXED(${aresta("C")},2)&", relatório de débito de R$ "&FIXED(${aresta("D")},2)` +
-    `&" e diferença de R$ "&FIXED(${aresta("E")},2)&". "&IF(Resumo!F${R_CARTAO + 1}=0,"Nenhuma empresa com divergência.",Resumo!F${R_CARTAO + 1}&" empresa(s) com divergência.")` +
-    `&" "&IF(COUNTIF(E${C_INI}:E${C_FIM},"FALHA")=0,"Todas as checagens da planilha fecharam.",COUNTIF(E${C_INI}:E${C_FIM},"FALHA")&" checagem(ns) com falha.")`;
-  B.altura(R_PAR, 64);
-  const sPar = est.xf({ quebra: true, h: "left", v: "top", recuo: 1 });
-  B.formula(0, R_PAR, fParagrafo, paragrafo, sPar);
-  for (let c = 1; c < 5; c++) B.vazia(c, R_PAR, sPar);
-
-  const planilha2 =
-    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
-    '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">' +
-    '<sheetPr><pageSetUpPr fitToPage="1"/></sheetPr>' +
-    `<dimension ref="A1:E${R_PAR}"/>` +
-    `<sheetViews><sheetView showGridLines="0" zoomScale="90" zoomScaleNormal="90" workbookViewId="0">` +
-      `<pane ySplit="${C_CAB}" topLeftCell="A${C_INI}" activePane="bottomLeft" state="frozen"/><selection pane="bottomLeft" activeCell="A${C_INI}" sqref="A${C_INI}"/></sheetView></sheetViews>` +
-    '<sheetFormatPr defaultRowHeight="20" customHeight="1"/>' +
-    '<cols><col min="1" max="1" width="62" customWidth="1"/><col min="2" max="4" width="20" customWidth="1"/><col min="5" max="5" width="16" customWidth="1"/></cols>' +
-    `<sheetData>${B.dados()}</sheetData>` +
-    '<sheetProtection sheet="1" objects="1" scenarios="1"/>' +
-    `<mergeCells count="1"><mergeCell ref="A${R_PAR}:E${R_PAR}"/></mergeCells>` +
-    `<conditionalFormatting sqref="E${C_INI}:E${C_FIM}"><cfRule type="cellIs" dxfId="${dxOk}" priority="1" operator="equal"><formula>"OK"</formula></cfRule>` +
-      `<cfRule type="cellIs" dxfId="${dxFalha}" priority="2" operator="equal"><formula>"FALHA"</formula></cfRule></conditionalFormatting>` +
-    `<conditionalFormatting sqref="A6"><cfRule type="cellIs" dxfId="${dxOk}" priority="3" operator="equal"><formula>"CONFERIDO"</formula></cfRule>` +
-      `<cfRule type="cellIs" dxfId="${dxTj}" priority="4" operator="equal"><formula>"COM PENDÊNCIAS"</formula></cfRule></conditionalFormatting>` +
-    '<pageMargins left="0.5" right="0.5" top="0.75" bottom="0.75" header="0.3" footer="0.3"/>' +
+    `<mergeCells count="${merges.length}">${merges.map((m) => `<mergeCell ref="${m}"/>`).join("")}</mergeCells>` +
+    cf +
+    '<pageMargins left="0.4" right="0.4" top="0.6" bottom="0.6" header="0.3" footer="0.3"/>' +
     '<pageSetup paperSize="9" orientation="landscape" fitToWidth="1" fitToHeight="0"/>' +
     rodape(`Fonte: ${fonteTxt || "relatórios do Controle Bancário"}`) + '</worksheet>';
 
@@ -351,7 +305,6 @@ export function gerarXlsxResumo({ iso, rotulo, cols, total, avisos = [], arquivo
       '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/>' +
       '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>' +
       '<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>' +
-      '<Override PartName="/xl/worksheets/sheet2.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>' +
       '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>' +
       '<Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>' +
       '<Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/></Types>'],
@@ -366,17 +319,13 @@ export function gerarXlsxResumo({ iso, rotulo, cols, total, avisos = [], arquivo
     ["docProps/app.xml", '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties"><Application>NOCTUS</Application></Properties>'],
     ["xl/workbook.xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook ${NS} xmlns:r="${REL}">` +
       '<bookViews><workbookView xWindow="0" yWindow="0" windowWidth="28800" windowHeight="15000" activeTab="0"/></bookViews>' +
-      '<sheets><sheet name="Resumo" sheetId="1" r:id="rId1"/><sheet name="Conferência" sheetId="2" r:id="rId2"/></sheets>' +
-      `<definedNames><definedName name="_xlnm._FilterDatabase" localSheetId="0" hidden="1">Resumo!$A$${R_CAB}:$F$${R_FIM}</definedName>` +
-      `<definedName name="_xlnm.Print_Titles" localSheetId="0">Resumo!$${R_CAB}:$${R_CAB}</definedName>` +
-      `<definedName name="_xlnm.Print_Titles" localSheetId="1">'Conferência'!$${C_CAB}:$${C_CAB}</definedName></definedNames>` +
+      '<sheets><sheet name="Tabela resumo" sheetId="1" r:id="rId1"/></sheets>' +
       '<calcPr calcId="191029" fullCalcOnLoad="1"/></workbook>'],
     ["xl/_rels/workbook.xml.rels", '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
-      `<Relationship Id="rId1" Type="${REL}/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="${REL}/worksheet" Target="worksheets/sheet2.xml"/>` +
-      `<Relationship Id="rId3" Type="${REL}/styles" Target="styles.xml"/></Relationships>`],
+      `<Relationship Id="rId1" Type="${REL}/worksheet" Target="worksheets/sheet1.xml"/>` +
+      `<Relationship Id="rId2" Type="${REL}/styles" Target="styles.xml"/></Relationships>`],
     ["xl/styles.xml", est.arquivo()],
-    ["xl/worksheets/sheet1.xml", planilha1],
-    ["xl/worksheets/sheet2.xml", planilha2],
+    ["xl/worksheets/sheet1.xml", planilha],
   ];
   return zipar(arquivos, agora);
 }
