@@ -172,6 +172,16 @@ h2{font-size:.95rem;font-weight:700;margin:0 0 1rem;letter-spacing:-.01em}
 .kpi-val.pos{color:var(--cb-pos)}
 .kpi-val.neg{color:var(--color-error)}
 .pilula-neutra{margin-left:auto;background:var(--color-surface-raised);color:var(--color-text)}
+/* 03/11/2026: botão Exportar para Excel acima do selo de divergências */
+.resumo-acoes{margin-left:auto;display:flex;flex-direction:column;align-items:flex-end;gap:.6rem}
+.resumo-acoes .pilula-neutra{margin-left:0}
+.btn-exportar{display:inline-flex;align-items:center;gap:.5rem;min-height:36px;padding:0 .95rem;border:1px solid var(--color-border);
+  border-radius:var(--radius-md);background:var(--color-surface-raised);color:var(--color-text);font:inherit;font-size:.8rem;font-weight:600;
+  cursor:pointer;transition:border-color var(--transition-fast),color var(--transition-fast)}
+.btn-exportar svg{color:var(--color-green);flex:none}
+.btn-exportar:hover:not(:disabled){border-color:var(--color-green);color:var(--color-green)}
+.btn-exportar:disabled{opacity:.45;cursor:default}
+.btn-exportar:focus-visible{outline:2px solid var(--color-blue);outline-offset:3px}
 #resumo-aviso:not(:empty){padding:.9rem 1.5rem;border-bottom:1px solid var(--color-border)}   /* faixa própria do aviso, separada da tabela */
 /* 30/10: todas as empresas sempre à vista. O quadro cresce até a largura da tela (largura posta pelo JS)
    e, se ainda não couber, as empresas quebram em mais faixas, uma tabela por faixa. Sem rolagem, sem setas. */
@@ -316,6 +326,7 @@ h2{font-size:.95rem;font-weight:700;margin:0 0 1rem;letter-spacing:-.01em}
   .resumo-topo{padding:1.1rem;gap:1rem 1.75rem}
   .kpi-val{font-size:1.25rem}
   .pilula-neutra{margin-left:0}
+  .resumo-acoes{margin-left:0;align-items:flex-start}
   #resumo-aviso:not(:empty){padding-left:1.1rem;padding-right:1.1rem}
   .tabela-resumo tr > :first-child{padding-left:1.1rem}
   .tabela-resumo th:last-child,.tabela-resumo td:last-child{padding-right:1.1rem}
