@@ -163,6 +163,17 @@ h2{font-size:.95rem;font-weight:700;margin:0 0 1rem;letter-spacing:-.01em}
 .botao-comp:hover{border-color:var(--color-blue);background:var(--color-blue-dim)}
 .botao-comp:focus-visible{outline:2px solid var(--color-blue);outline-offset:2px}
 .composicao-corpo[hidden]{display:none}
+
+/* ---------------------------------------------- Parte 2: planilha de importação */
+.cartao-importacao{padding:0}
+.cartao-importacao .quadro-topo{border-bottom:0}
+.botao-principal{padding:.55rem 1rem;border:0;border-radius:var(--radius-sm);background:var(--color-green);color:#fff;
+  font:inherit;font-size:.88rem;font-weight:700;cursor:pointer;transition:background var(--transition-fast)}
+.botao-principal:hover:not(:disabled){background:var(--color-green-hover)}
+.botao-principal:focus-visible{outline:2px solid var(--color-blue);outline-offset:2px}
+.botao-principal:disabled{opacity:.45;cursor:not-allowed}
+.importacao-msg:not(:empty){padding:0 1.5rem 1.25rem;display:flex;flex-direction:column;gap:.6rem}
+.importacao-msg .acoes-confirmar{display:flex;gap:.6rem;flex-wrap:wrap}
 .bloco-comp{padding:1.25rem 1.5rem 0}
 .bloco-comp:last-child{padding-bottom:1.5rem}
 .bloco-comp h3{margin:0 0 .6rem;font-size:.82rem;font-weight:700;letter-spacing:.04em;text-transform:uppercase;
