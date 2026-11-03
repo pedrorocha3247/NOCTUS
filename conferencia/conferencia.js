@@ -3021,16 +3021,27 @@ function abaResumoGeral(wb, lotes, linhas, plano = null) {
     } else {
       // Planilha consolidada geral (gerarPlanilhaGeral): não tem uma aba por
       // empresa, só "TODAS" com todo mundo junto — busca ali, filtrando
-      // pela empresa dessa linha da tabela.
-      const crit = `"${escaparFormula(chave)}"`;
-      linha.getCell(3 + o).value = { formula: `COUNTIFS(TODAS!$B$${deTodas}:$B$100000,${crit})` };
-      linha.getCell(4 + o).value = { formula: `SUMIFS(TODAS!$I$${deTodas}:$I$100000,TODAS!$B$${deTodas}:$B$100000,${crit})` };
-      linha.getCell(5 + o).value = { formula:
-        `COUNTIFS(TODAS!$B$${deTodas}:$B$100000,${crit},TODAS!$J$${deTodas}:$J$100000,"<>Sem conferir")` };
-      linha.getCell(6 + o).value = { formula:
-        `COUNTIFS(TODAS!$B$${deTodas}:$B$100000,${crit},TODAS!$J$${deTodas}:$J$100000,"Sem conferir")` };
-      linha.getCell(7 + o).value = { formula:
-        `COUNTIFS(TODAS!$B$${deTodas}:$B$100000,${crit},TODAS!$L$${deTodas}:$L$100000,"<>")` };
+      // pela DATA e pela empresa dessa linha da tabela.
+      //
+      // Correção de 03/11/2026 (números exorbitantes no relatório geral): esta
+      // tabela tem uma linha por dia E empresa, mas as fórmulas filtravam só
+      // pela empresa. Com N dias, cada linha da empresa somava os N dias e o
+      // TOTAL saía N vezes maior que o real (o subtítulo, calculado em JS,
+      // seguia certo — daí a divergência visível na própria planilha).
+      // Agora o critério inclui a coluna A (Data) de TODAS. SUMPRODUCT com
+      // igualdade de texto no lugar de COUNTIFS: o COUNTIFS converte um critério
+      // com cara de data ("03/11/2026") em número e deixaria de casar com a
+      // célula de texto. A faixa é a das linhas que existem em TODAS (e não
+      // 100000) para a planilha abrir rápido mesmo com muitas conferências.
+      const ultimaTodas = deTodas + linhas.length - 1;
+      const col = (c) => `TODAS!$${c}$${deTodas}:$${c}$${ultimaTodas}`;
+      const doDiaEEmpresa =
+        `(${col("A")}="${escaparFormula(lote.data)}")*(${col("B")}="${escaparFormula(chave)}")`;
+      linha.getCell(3 + o).value = { formula: `SUMPRODUCT(${doDiaEEmpresa})` };
+      linha.getCell(4 + o).value = { formula: `SUMPRODUCT(${doDiaEEmpresa},${col("I")})` };
+      linha.getCell(5 + o).value = { formula: `SUMPRODUCT(${doDiaEEmpresa}*(${col("J")}<>"Sem conferir"))` };
+      linha.getCell(6 + o).value = { formula: `SUMPRODUCT(${doDiaEEmpresa}*(${col("J")}="Sem conferir"))` };
+      linha.getCell(7 + o).value = { formula: `SUMPRODUCT(${doDiaEEmpresa}*(${col("L")}<>""))` };
     }
     l++;
   }
