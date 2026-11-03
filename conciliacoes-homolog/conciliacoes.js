@@ -631,8 +631,12 @@ function ligarTela() {
 (async function iniciar() {
   if (!ehAdminNoNavegador()) return;                // perfil "user": continua vendo "em desenvolvimento"
   const confirmado = await adminConfirmado();
-  if (confirmado !== "sim") return;                 // "falha" também não abre: o servidor é quem decide
+  if (confirmado !== "sim") { liberarAviso(); return; }   // "falha" também não abre: o servidor é quem decide
   $("em-desenvolvimento").classList.add("oculto");
   $("modulo").classList.remove("oculto");
+  liberarAviso();
   ligarTela();
-})();
+})().catch(() => liberarAviso());
+
+/** Tira a marca "decidindo" do HTML: até aqui o quadro "em desenvolvimento" ficava escondido para o administrador (03/11/2026). */
+function liberarAviso() { document.documentElement.classList.remove("decidindo"); }
