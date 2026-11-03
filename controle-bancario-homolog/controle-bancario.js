@@ -14,15 +14,22 @@
  * O arquivo é reconhecido pelo conteúdo; o total de cada empresa vai para
  * controle_bancario_debito_noctus e a tabela resumo compara Fluxo × Relatório
  * da mesma data (ver debito.js).
+ *
+ * Parte 3 (03/11/2026, modelo A): lançamentos que justificam a diferença Fluxo × Relatório
+ * (Outros Bancos, Desconsiderados, Numerários e Compromissos), com sinal, painel de soma,
+ * "Falta justificar" e detalhe por empresa. Exclusão é lógica (ver lancamentos.js e o banco).
  */
 import { lerFluxoCaixa, linhasDoExcel } from "./planilha.js";
 import { ehRelatorioDebito, lerDebito, montarResumo } from "./debito.js";
+import { CATEGORIAS, NOME_CATEGORIA, contasDaEmpresa, validarLancamento, somarPorCategoria, faltaJustificar,
+         porEmpresa, situacaoDaEmpresa } from "./lancamentos.js";
 
 const SB_URL = "https://wyyqjlwzphlhnplmirlg.supabase.co";
 const SB_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind5eXFqbHd6cGhsaG5wbG1pcmxnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQyMTU0MDcsImV4cCI6MjA5OTc5MTQwN30.8TEY_BZAm7P9vwuU0Eh5jzw6rgzcPOpTXk_gBU5FQJc";
 const CHAVE_SESSAO = "sipep.session";
 const TABELA = "controle_bancario_noctus";
 const TABELA_DEBITO = "controle_bancario_debito_noctus";
+const TABELA_LANC = "controle_bancario_lancamentos_noctus";
 const ADMIN_USUARIO = "pedro rocha";
 const ADMIN_EMAIL = "pedro.rocha@momentum.com.br";
 const TAMANHO_MAXIMO = 10 * 1024 * 1024;   // 10 MB: o relatório real tem ~10 KB
@@ -140,6 +147,14 @@ const estado = {
   atual: null,        // iso escolhida
   inicioDatas: 0,      // 1ª data visível na faixa de datas (no máximo visiveis() por vez)
   calMes: [2026, 0],   // [ano, mês 0-11] mostrado no calendário
+  lancamentos: [],     // Parte 3: lançamentos ativos de todas as datas { id, data_relatorio, empresa_codigo, empresa, categoria, valor, banco, descricao }
+  lancFalha: false,    // true quando os lançamentos não puderam ser lidos: o painel não mostra soma que poderia estar errada
+  empresasResumo: [],  // empresas da tabela resumo da data aberta (com código), para o formulário de lançamento
+  detalhe: null,       // código da empresa cujo detalhe de lançamentos está aberto
+  detalheIso: null,    // data a que esse detalhe pertence
+  confirmaExcluir: null, // id do lançamento aguardando "Sim, excluir"
+  dialogoIso: null,    // data a que o formulário aberto pertence
+  salvandoLanc: false,
 };
 
 async function carregarSalvos() {
@@ -164,6 +179,41 @@ async function carregarDebitos() {
     estado.debitos.set(l.data_relatorio, { iso: l.data_relatorio, empresas: Array.isArray(l.empresas) ? l.empresas : [],
       arquivo: l.arquivo, atualizado_em: l.atualizado_em });
   }
+}
+
+/** Aviso legível (vai direto para a tela, sem ser tratado como falha técnica). */
+function erroAviso(texto) { const e = new Error(texto); e.aviso = true; return e; }
+const CAMPOS_LANC = "id,data_relatorio,empresa_codigo,empresa,categoria,valor,banco,descricao,criado_em";
+
+async function carregarLancamentos() {
+  const LIMITE = 5000;
+  const r = await servidor(`${TABELA_LANC}?select=${CAMPOS_LANC}&excluido=eq.false&order=id.asc&limit=${LIMITE}`);
+  const linhas = await r.json();
+  // se bateu no limite, há lançamentos que não vieram: melhor recusar do que mostrar soma incompleta
+  if (!Array.isArray(linhas) || linhas.length >= LIMITE) throw new Error("lançamentos: leitura incompleta");
+  estado.lancamentos = linhas.map((l) => ({ ...l, valor: Number(l.valor), empresa_codigo: String(l.empresa_codigo) }));
+}
+
+async function salvarLancamento(lanc, iso) {
+  const r = await servidor(`${TABELA_LANC}?select=${CAMPOS_LANC}`, {
+    method: "POST",
+    headers: { Prefer: "return=representation" },
+    body: JSON.stringify([{ data_relatorio: iso, ...lanc }]),
+  });
+  const linhas = await r.json();
+  if (!Array.isArray(linhas) || linhas.length !== 1) throw new Error("lançamento: servidor não devolveu a linha gravada");
+  return { ...linhas[0], valor: Number(linhas[0].valor), empresa_codigo: String(linhas[0].empresa_codigo) };
+}
+
+/** Exclusão LÓGICA: marca excluido=true. Nada é apagado do banco. */
+async function excluirLancamento(id) {
+  const r = await servidor(`${TABELA_LANC}?id=eq.${Number(id)}&excluido=eq.false`, {
+    method: "PATCH",
+    headers: { Prefer: "return=representation" },
+    body: JSON.stringify({ excluido: true }),
+  });
+  const linhas = await r.json();
+  if (!Array.isArray(linhas) || linhas.length !== 1) throw new Error("lançamento: exclusão não confirmada pelo servidor");
 }
 
 async function salvarDebito(deb, arquivo) {
@@ -332,9 +382,11 @@ function desenhar() {
   if (!estado.atual || !estado.datas.has(estado.atual)) {
     cartao.classList.add("oculto");
     $("cartao-resumo")?.classList.add("oculto");
+    $("painel-lanc")?.classList.add("oculto");
     return;
   }
   cartao.classList.remove("oculto");
+  if (estado.detalhe != null && estado.detalheIso !== estado.atual) { estado.detalhe = null; estado.confirmaExcluir = null; }
 
   // escolha da data: só aparece quando há mais de uma
   const isos = [...estado.datas.keys()].sort();
@@ -406,6 +458,13 @@ function desenharResumo(reg, colMinima = 0) {
   }
   $("resumo-aviso").innerHTML = avisos.join("");
 
+  // Parte 3: lançamentos da data, painel e empresas disponíveis no formulário
+  const lancsData = lancamentosDaData(reg.iso);
+  const lancPorEmpresa = porEmpresa(lancsData);
+  estado.empresasResumo = res.cols.filter((c) => c.codigo != null && c.codigo !== "").map((c) => ({ codigo: String(c.codigo), empresa: c.empresa, diferenca: c.diferenca }));
+  desenharPainel(reg, res, deb, lancsData);
+  const nLanc = (c) => (c.codigo != null ? (lancPorEmpresa.get(String(c.codigo)) || []).length : 0);
+
   // 30/10: todas as empresas à vista, sem rolagem: o quadro cresce até a largura da tela e,
   // se ainda não couber, as empresas quebram em faixas (cada faixa com Fluxo/Relatório/Diferença).
   const cols = res.cols;
@@ -416,7 +475,7 @@ function desenharResumo(reg, colMinima = 0) {
     return (texto, peso, px) => { cv.font = `${peso} ${px}px ${fonte}`; return cv.measureText(texto).width; }; })();
   const base = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
   const maior = cols.reduce((m, c) => Math.max(m,
-    medir(String(c.empresa).toUpperCase(), 700, base * 0.72) * 1.06,     // cabeçalho em maiúsculas com espaçamento
+    medir((String(c.empresa) + (nLanc(c) ? ` · ${nLanc(c)}` : "")).toUpperCase(), 700, base * 0.72) * 1.06,     // cabeçalho em maiúsculas com espaçamento (e " · n" dos lançamentos)
     ...[c.fluxo, c.relatorio].filter((v) => v != null).map((v) => medir(contabil(v), 700, base * (celular ? 0.86 : 0.88))),
     // a diferença vai dentro do selo colorido: soma a folga interna do selo (.45rem de cada lado)
     ...[c.diferenca].filter((v) => v != null).map((v) => medir(contabil(v), 700, base * (celular ? 0.86 : 0.88)) + base * 0.9)), 0);
@@ -436,7 +495,11 @@ function desenharResumo(reg, colMinima = 0) {
   const porFaixa = Math.ceil(cols.length / faixas);   // faixas equilibradas
   const tabela = (grupo, i) => {
     const vazias = "<td></td>".repeat(porFaixa - grupo.length);
-    const cab = grupo.map((c) => `<th scope="col"${c.semFluxo ? ' class="sem-fluxo"' : ""} title="${esc(c.empresa)}">${esc(c.empresa)}` +
+    const nome = (c) => nLanc(c)
+      ? `<button type="button" class="cab-lanc" data-cod="${esc(c.codigo)}" aria-haspopup="dialog" ` +
+        `aria-label="${esc(c.empresa)}: ${plural(nLanc(c), "lançamento", "lançamentos")}. Ver detalhes">${esc(c.empresa)} · ${nLanc(c)}</button>`
+      : esc(c.empresa);
+    const cab = grupo.map((c) => `<th scope="col"${c.semFluxo ? ' class="sem-fluxo"' : ""} title="${esc(c.empresa)}">${nome(c)}` +
       `${c.semFluxo ? '<span class="marca">sem fluxo</span>' : ""}</th>`).join("") + "<th></th>".repeat(porFaixa - grupo.length);
     const linha = (rotulo, classe, valor) =>
       `<tr class="${classe}"><th scope="row">${rotulo}</th>${grupo.map(valor).join("")}${vazias}</tr>`;
@@ -467,7 +530,236 @@ function desenharResumo(reg, colMinima = 0) {
         : cel.scrollWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
       if (cel.textContent && conteudo > util + 0.5) falta = Math.max(falta, conteudo - util);
     }
-    if (falta > 0) desenharResumo(reg, Math.ceil(COL + falta + 2));
+    if (falta > 0) { desenharResumo(reg, Math.ceil(COL + falta + 2)); return; }
+  }
+  desenharDetalhe();
+}
+
+/* ------------------------------------------------------------ Parte 3: lançamentos (modelo A, 03/11/2026) */
+const lancamentosDaData = (iso) => estado.lancamentos.filter((l) => l.data_relatorio === iso);
+/** Valor com sinal explícito: "+5.000,00" explica fluxo maior; "−100,00" explica débito maior. */
+const moedaSinal = (v) => (v > 0 ? "+" : v < 0 ? "−" : "") + moeda(Math.abs(v));
+
+/** Selo "Falta justificar": laranja = fluxo maior sem explicação; vermelho = passou/débito maior; verde = justificado. */
+function seloFalta(f) {
+  if (f.situacao === "semRelatorio") return { classe: "", texto: "Aguardando o relatório de débito", dica: "" };
+  if (f.situacao === "justificado") return { classe: "ok", texto: "Justificado", dica: "Os lançamentos explicam toda a diferença." };
+  if (f.situacao === "falta") return { classe: "pos", texto: `R$ ${moeda(f.falta)}`, dica: "Ainda falta explicar fluxo maior que o relatório de débito." };
+  return { classe: "neg", texto: `R$ −${moeda(Math.abs(f.falta))}`, dica: "Os lançamentos passam da diferença (ou há débito maior ainda sem explicação)." };
+}
+
+function desenharPainel(reg, res, deb, lancsData) {
+  const aside = $("painel-lanc");
+  if (!aside) return;   // defensivo: na publicação o JS vai ao ar antes do HTML
+  aside.classList.remove("oculto");
+  const cartao = $("lanc-cartao"), btn = $("btn-lanc");
+  if (estado.lancFalha) {   // sem leitura confiável não se mostra soma nem se aceita novo lançamento
+    cartao.classList.add("oculto");
+    btn.disabled = true;
+    return;
+  }
+  cartao.classList.remove("oculto");
+  btn.disabled = false;
+  const { porCategoria, total } = somarPorCategoria(lancsData);
+  $("lanc-categorias").innerHTML = CATEGORIAS.map((c) =>
+    `<div class="lanc-linha"><span>${esc(c.nome)}</span><span class="lanc-val">${esc(contabil(porCategoria[c.id]))}</span></div>`).join("");
+  $("lanc-total").textContent = contabil(total);
+  const dif = deb ? res.total.diferenca : null;
+  const celDif = $("lanc-dif");
+  celDif.textContent = dif == null ? "—" : contabil(dif);
+  celDif.className = `lanc-val ${dif == null || dif === 0 ? "" : dif > 0 ? "pos" : "neg"}`;
+  const selo = seloFalta(faltaJustificar(dif, total));
+  const pill = $("lanc-falta");
+  pill.textContent = selo.texto;
+  pill.className = `lanc-pill ${selo.classe}`;
+  pill.title = selo.dica;
+}
+
+/** Detalhe dos lançamentos de uma empresa (aparece sob o cabeçalho "NOME · n" da tabela resumo). */
+function desenharDetalhe() {
+  const el = $("lanc-detalhe");
+  if (!el) return;
+  const reg = estado.atual && estado.datas.get(estado.atual);
+  const cod = estado.detalhe;
+  const lancs = reg && cod != null ? (porEmpresa(lancamentosDaData(reg.iso)).get(String(cod)) || []) : [];
+  const col = reg ? estado.empresasResumo.find((c) => c.codigo === String(cod)) : null;
+  const btn = el.parentElement?.querySelector(`.cab-lanc[data-cod="${CSS.escape(String(cod))}"]`);
+  if (!reg || cod == null || !lancs.length || !col || !btn) {
+    estado.detalhe = null; estado.confirmaExcluir = null;
+    el.classList.add("oculto"); el.innerHTML = "";
+    return;
+  }
+  const sit = situacaoDaEmpresa(col.diferenca, lancs);
+  const selo = seloFalta({ situacao: sit.situacao, falta: sit.falta });
+  const itens = lancs.map((l) => {
+    const confirma = estado.confirmaExcluir === l.id;
+    return `<li class="lanc-item" data-id="${l.id}">` +
+      `<div class="lanc-item__topo"><strong>${esc(NOME_CATEGORIA[l.categoria] || l.categoria)}</strong>` +
+      `<span class="lanc-val ${l.valor > 0 ? "pos" : "neg"}">${esc(moedaSinal(l.valor))}</span></div>` +
+      `<div class="lanc-item__desc">${esc(l.descricao)}</div>` +
+      (l.banco ? `<div class="lanc-item__banco">${esc(l.banco)}</div>` : "") +
+      (confirma
+        ? `<div class="lanc-item__confirma"><span>Excluir este lançamento?</span>` +
+          `<button type="button" class="lanc-mini lanc-mini--perigo" data-acao="excluir-sim" data-id="${l.id}">Sim, excluir</button>` +
+          `<button type="button" class="lanc-mini" data-acao="excluir-nao">Cancelar</button></div>`
+        : `<button type="button" class="lanc-mini lanc-mini--discreto" data-acao="excluir" data-id="${l.id}">Excluir</button>`) +
+      `</li>`;
+  }).join("");
+  const antes = el.querySelector(".lanc-detalhe__msg")?.innerHTML || "";
+  el.innerHTML =
+    `<div class="lanc-detalhe__topo"><h3 id="lanc-detalhe-titulo">${esc(col.empresa)} · ${plural(lancs.length, "lançamento", "lançamentos")}</h3>` +
+    `<button type="button" class="lanc-fechar" data-acao="fechar" aria-label="Fechar" title="Fechar">${ICONE_X}</button></div>` +
+    `<div class="lanc-detalhe__msg" aria-live="polite">${antes}</div>` +
+    `<ul class="lanc-itens">${itens}</ul>` +
+    `<div class="lanc-detalhe__rodape"><div><span>Lançado </span><strong>${esc(moeda(sit.lancado))}</strong>` +
+    `<span> de </span><strong>${col.diferenca == null ? "—" : esc(moeda(col.diferenca))}</strong></div>` +
+    `<div class="lanc-detalhe__falta"><span>${sit.situacao === "justificado" ? "Situação" : "Falta"}</span>` +
+    `<span class="lanc-pill ${selo.classe}" title="${esc(selo.dica)}">${esc(sit.situacao === "falta" ? moeda(sit.falta) : selo.texto)}</span></div></div>`;
+  el.classList.remove("oculto");
+  // posição: logo abaixo do cabeçalho clicado, sem passar das bordas do cartão
+  const cartao = el.parentElement;
+  const cr = cartao.getBoundingClientRect(), br = btn.getBoundingClientRect();
+  const larg = el.offsetWidth;
+  const esquerda = Math.max(8, Math.min(br.left - cr.left, cr.width - larg - 8));
+  el.style.left = `${Math.round(esquerda)}px`;
+  el.style.top = `${Math.round(br.bottom - cr.top + 6)}px`;
+}
+
+function alternarDetalhe(cod) {
+  const mesmo = estado.detalhe === String(cod);
+  estado.detalhe = mesmo ? null : String(cod);
+  estado.detalheIso = estado.atual;
+  estado.confirmaExcluir = null;
+  const el = $("lanc-detalhe");
+  if (el) el.querySelector(".lanc-detalhe__msg")?.replaceChildren();
+  desenharDetalhe();
+  if (estado.detalhe) {
+    const el = $("lanc-detalhe");
+    try { el?.scrollIntoView({ block: "nearest" }); } catch { /* sem rolagem automática, segue */ }
+    el?.querySelector("[data-acao=fechar]")?.focus({ preventScroll: true });
+  }
+}
+
+function fecharDetalhe(devolverFoco = false) {
+  const cod = estado.detalhe;
+  estado.detalhe = null; estado.confirmaExcluir = null;
+  desenharDetalhe();
+  if (devolverFoco && cod != null) document.querySelector(`.cab-lanc[data-cod="${CSS.escape(String(cod))}"]`)?.focus();
+}
+
+async function aoClicarDetalhe(ev) {
+  const b = ev.target.closest("[data-acao]");
+  if (!b) return;
+  const acao = b.dataset.acao;
+  if (acao === "fechar") { fecharDetalhe(true); return; }
+  if (acao === "excluir") { estado.confirmaExcluir = Number(b.dataset.id); desenharDetalhe(); return; }
+  if (acao === "excluir-nao") { estado.confirmaExcluir = null; desenharDetalhe(); return; }
+  if (acao === "excluir-sim") {
+    const id = Number(b.dataset.id);
+    b.disabled = true;
+    const msg = $("lanc-detalhe").querySelector(".lanc-detalhe__msg");
+    try {
+      await excluirLancamento(id);
+    } catch (e) {
+      estado.confirmaExcluir = null;
+      desenharDetalhe();
+      const m = $("lanc-detalhe")?.querySelector(".lanc-detalhe__msg");
+      if (m) m.innerHTML = alerta("erro", esc(msgErro(e, "Não consegui excluir o lançamento")));
+      return;
+    }
+    estado.lancamentos = estado.lancamentos.filter((l) => l.id !== id);
+    estado.confirmaExcluir = null;
+    const reg = estado.atual && estado.datas.get(estado.atual);
+    if (reg) desenharResumo(reg);
+    $("lanc-msg").innerHTML = alerta("ok", "Lançamento excluído. O registro continua guardado no banco como excluído.");
+    if (msg) msg.replaceChildren();
+  }
+}
+
+/* formulário "Novo lançamento" */
+const CAMPOS_ERRO = ["categoria", "valor", "empresa", "banco", "descricao"];
+function limparErrosLanc() {
+  for (const c of CAMPOS_ERRO) { const e = $(`erro-${c}`); if (e) e.textContent = ""; }
+  $("lanc-form-msg").replaceChildren();
+}
+function atualizarBancos() {
+  const caixa = $("lanc-banco-caixa");
+  const ehOutros = $("lanc-categoria").value === "outros_bancos";
+  caixa.classList.toggle("oculto", !ehOutros);
+  if (!ehOutros) return;
+  const cod = $("lanc-empresa").value;
+  const contas = cod ? contasDaEmpresa(cod) : [];
+  const nome = estado.empresasResumo.find((c) => c.codigo === cod)?.empresa;
+  $("lanc-banco-rotulo").textContent = nome ? `Banco (${nome})` : "Banco";
+  const sel = $("lanc-banco");
+  sel.innerHTML = (contas.length === 1 ? "" : `<option value="">${contas.length ? "Selecione o banco" : "Sem conta cadastrada"}</option>`) +
+    contas.map((c) => `<option value="${esc(c.rotulo)}">${esc(c.rotulo)}</option>`).join("");
+  sel.disabled = !contas.length;
+  $("erro-banco").textContent = cod && !contas.length ? "Esta empresa não tem conta bancária cadastrada no NOCTUS." : "";
+}
+function abrirDialogo(abrir) {
+  const dlg = $("lanc-dialogo"), fundo = $("lanc-fundo"), btn = $("btn-lanc");
+  if (!dlg) return;
+  if (abrir) {
+    const reg = estado.atual && estado.datas.get(estado.atual);
+    if (!reg || estado.lancFalha) return;
+    fecharDetalhe();
+    estado.dialogoIso = reg.iso;
+    $("lanc-categoria").innerHTML = CATEGORIAS.map((c) => `<option value="${c.id}">${esc(c.nome)}</option>`).join("");
+    $("lanc-empresa").innerHTML = estado.empresasResumo.map((c) => `<option value="${esc(c.codigo)}">${esc(c.empresa)}</option>`).join("");
+    // empresa sugerida: a primeira que ainda tem diferença a justificar
+    const lancPor = porEmpresa(lancamentosDaData(reg.iso));
+    const pendente = estado.empresasResumo.find((c) => c.diferenca != null &&
+      situacaoDaEmpresa(c.diferenca, lancPor.get(c.codigo) || []).falta !== 0);
+    $("lanc-empresa").value = (pendente || estado.empresasResumo[0])?.codigo ?? "";
+    $("lanc-valor").value = ""; $("lanc-descricao").value = "";
+    limparErrosLanc();
+    atualizarBancos();
+    if (!estado.empresasResumo.length) {
+      $("lanc-form-msg").innerHTML = alerta("erro", "Não há empresa com código cadastrado nesta data para receber lançamento.");
+    }
+  }
+  dlg.classList.toggle("oculto", !abrir);
+  fundo.classList.toggle("oculto", !abrir);
+  btn.setAttribute("aria-expanded", String(abrir));
+  if (abrir) {
+    try { dlg.scrollIntoView({ block: "nearest" }); } catch { /* sem rolagem automática, segue */ }
+    $("lanc-valor").focus({ preventScroll: true });
+  }
+}
+
+async function enviarLancamento(ev) {
+  ev.preventDefault();
+  if (estado.salvandoLanc) return;
+  limparErrosLanc();
+  const iso = estado.dialogoIso;
+  const r = validarLancamento({
+    categoria: $("lanc-categoria").value, valorTexto: $("lanc-valor").value, empresaCodigo: $("lanc-empresa").value,
+    empresas: estado.empresasResumo, banco: $("lanc-banco").value, descricao: $("lanc-descricao").value,
+  });
+  if (!r.ok) {
+    for (const [campo, texto] of Object.entries(r.erros)) { const e = $(`erro-${campo}`); if (e) e.textContent = texto; }
+    const primeiro = CAMPOS_ERRO.find((c) => r.erros[c]);
+    ({ categoria: "lanc-categoria", valor: "lanc-valor", empresa: "lanc-empresa", banco: "lanc-banco", descricao: "lanc-descricao" }[primeiro]
+      && $({ categoria: "lanc-categoria", valor: "lanc-valor", empresa: "lanc-empresa", banco: "lanc-banco", descricao: "lanc-descricao" }[primeiro])?.focus());
+    return;
+  }
+  estado.salvandoLanc = true;
+  const salvar = $("lanc-salvar");
+  salvar.disabled = true; salvar.textContent = "Salvando…";
+  try {
+    const gravado = await salvarLancamento(r.lancamento, iso);
+    estado.lancamentos.push(gravado);
+    abrirDialogo(false);
+    $("btn-lanc").focus();
+    const reg = estado.atual && estado.datas.get(estado.atual);
+    if (reg) desenharResumo(reg);
+    $("lanc-msg").innerHTML = alerta("ok", `Lançamento salvo: ${esc(NOME_CATEGORIA[gravado.categoria])}, ${esc(moedaSinal(gravado.valor))} (${esc(gravado.empresa)}).`);
+  } catch (e) {
+    $("lanc-form-msg").innerHTML = alerta("erro", esc(msgErro(e, "Não consegui salvar o lançamento")));
+  } finally {
+    estado.salvandoLanc = false;
+    salvar.disabled = false; salvar.textContent = "Salvar lançamento";
   }
 }
 
@@ -548,6 +840,30 @@ function ligarTela() {
   const ligar = (id, fn) => { const el = $(id); if (el) el.addEventListener("click", fn); };
   ligar("datas-ant", () => { estado.inicioDatas = Math.max(0, estado.inicioDatas - visiveis()); desenharDatasSemMudar(); });
   ligar("datas-prox", () => { estado.inicioDatas += visiveis(); desenharDatasSemMudar(); });
+  // Parte 3: lançamentos (defensivo: HTML antigo não tem o painel)
+  if ($("btn-lanc")) {
+    ligar("btn-lanc", () => abrirDialogo($("lanc-dialogo").classList.contains("oculto")));
+    ligar("lanc-fechar", () => { abrirDialogo(false); $("btn-lanc").focus(); });
+    ligar("lanc-cancelar", () => { abrirDialogo(false); $("btn-lanc").focus(); });
+    ligar("lanc-fundo", () => abrirDialogo(false));
+    $("lanc-form").addEventListener("submit", enviarLancamento);
+    $("lanc-categoria").addEventListener("change", atualizarBancos);
+    $("lanc-empresa").addEventListener("change", atualizarBancos);
+    $("lanc-detalhe").addEventListener("click", aoClicarDetalhe);
+    document.addEventListener("click", (ev) => {
+      const b = ev.target.closest(".cab-lanc");
+      if (b) { alternarDetalhe(b.dataset.cod); return; }
+      if (estado.detalhe == null) return;
+      // composedPath: o clique pode ter redesenhado (e soltado) o elemento clicado dentro do detalhe
+      if (ev.composedPath().some((n) => n.id === "lanc-detalhe")) return;
+      fecharDetalhe();
+    });
+    document.addEventListener("keydown", (ev) => {
+      if (ev.key !== "Escape") return;
+      if (!$("lanc-dialogo").classList.contains("oculto")) { abrirDialogo(false); $("btn-lanc").focus(); }
+      else if (estado.detalhe != null) fecharDetalhe(true);
+    });
+  }
   window.addEventListener("resize", aoRedimensionar);
   // a largura das colunas é medida com a fonte Inter: quando ela termina de carregar, mede de novo
   try {
@@ -604,6 +920,14 @@ async function iniciar() {
     await carregarDebitos();
   } catch (e) {
     $("upload-msg").innerHTML = alerta("erro", esc(msgErro(e, "Não consegui carregar os relatórios de débito já importados")));
+  }
+  // Parte 3: se os lançamentos não carregarem, o painel não mostra soma (poderia enganar) e o aviso explica
+  try {
+    await carregarLancamentos();
+  } catch (e) {
+    estado.lancFalha = true;
+    const m = $("lanc-msg");
+    if (m) m.innerHTML = alerta("erro", esc(msgErro(e, "Não consegui carregar os lançamentos")));
   }
   desenhar();
 }
