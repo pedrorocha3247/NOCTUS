@@ -8,6 +8,7 @@
   --color-error:#e5534b; --color-error-bg:rgba(229,83,75,.1); --color-error-border:rgba(229,83,75,.35);
   --color-warn:#d9a441; --color-warn-bg:rgba(217,164,65,.1); --color-warn-border:rgba(217,164,65,.35);
   --cb-zebra:#151922; --cb-pilula-texto:#8fb3ff;
+  --cb-verde-solido:#0f8a52; --cb-tracejado:#3a4252;
   /* diferença positiva (banco maior que o SCK) em laranja; negativa em vermelho (--color-error) */
   --cb-pos:#f0883e; --cb-pos-fundo:rgba(240,136,62,.14);
   /* o que não dá para conferir fica cinza, nunca verde */
@@ -27,6 +28,7 @@
   --color-warn:#9a6700; --color-warn-bg:rgba(154,103,0,.08); --color-warn-border:rgba(154,103,0,.3);
   --shadow-card:0 12px 32px rgba(15,23,42,.08);
   --cb-zebra:#f8f9fb; --cb-pilula-texto:#1d4ed8;
+  --cb-verde-solido:#0f7f4b; --cb-tracejado:#aeb6c4;
   --cb-pos:#b54708; --cb-pos-fundo:rgba(234,88,12,.10);
   --cb-indef:#4b5563; --cb-indef-fundo:rgba(75,85,99,.10);
   color-scheme:light;
@@ -64,14 +66,6 @@ main.centro{flex:1;display:flex;align-items:center;justify-content:center;paddin
 h2{font-size:.95rem;font-weight:700;margin:0 0 1rem;letter-spacing:-.01em}
 .sub{color:var(--color-text-secondary);font-size:.85rem;margin:0}
 
-.solta{border:1.5px dashed var(--color-border);border-radius:var(--radius-md);padding:2.5rem 1.5rem;text-align:center;
-  cursor:pointer;transition:border-color var(--transition-fast),background-color var(--transition-fast)}
-.solta:hover,.solta.ativa{border-color:var(--color-green);background:var(--color-green-dim)}
-.solta:focus-visible{outline:2px solid var(--color-blue);outline-offset:3px}
-.solta.lendo{opacity:.6;pointer-events:none}
-.solta strong{display:block;font-size:.95rem;margin-bottom:.3rem}
-.solta span{color:var(--color-text-secondary);font-size:.85rem}
-
 #upload-msg:not(:empty){margin-top:1rem}
 /* toda mensagem tem o × para removê-la (regra do Rocha, 30/10/2026) */
 .alerta{display:flex;align-items:flex-start;gap:.6rem;border-radius:var(--radius-md);padding:.7rem .9rem;font-size:.85rem;margin-bottom:.7rem;
@@ -89,29 +83,82 @@ h2{font-size:.95rem;font-weight:700;margin:0 0 1rem;letter-spacing:-.01em}
 .alerta__x:focus-visible{opacity:1;outline:2px solid var(--color-blue);outline-offset:1px}
 
 
-/* ---------------------------------------------- escolha da empresa e da conta */
-.escolha{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1rem;margin-top:1rem}
-.campo{display:flex;flex-direction:column;gap:.4rem}
-.campo>span{font-size:.8rem;font-weight:600;color:var(--color-text-secondary)}
-.campo select{min-height:44px;padding:0 .75rem;border:1px solid var(--color-border);border-radius:var(--radius-md);
-  background:var(--color-surface-raised);color:var(--color-text);font:inherit;font-size:.9rem;cursor:pointer}
-.campo select:focus-visible{outline:2px solid var(--color-blue);outline-offset:2px}
-.conta-detalhe:not(:empty){margin:.9rem 0 0;font-size:.85rem;color:var(--color-text-secondary)}
+/* ---------------------------------------------- escolha da empresa e da conta (modelo B, 03/11/2026) */
+.cartao-escolha{padding:0;overflow:hidden}
+.escolha-topo{padding:1.25rem 1.5rem;border-bottom:1px solid var(--color-border)}
+.escolha-topo h2{margin:0 0 .15rem}
+.escolha-corpo{display:flex;align-items:stretch}
+.escolha-corpo[hidden]{display:none}
+.escolha-empresas{flex:none;width:280px;padding:1rem;border-right:1px solid var(--color-border);background:var(--color-bg);
+  display:flex;flex-direction:column;gap:.75rem}
+.busca-empresa{display:flex;align-items:center;gap:.5rem;height:40px;padding:0 .75rem;border:1px solid var(--color-border);
+  border-radius:var(--radius-md);background:var(--color-surface);color:var(--color-text-secondary)}
+.busca-empresa[hidden]{display:none}
+.busca-empresa:focus-within{outline:2px solid var(--color-blue);outline-offset:1px}
+.busca-empresa input{flex:1;min-width:0;border:0;outline:0;background:transparent;color:var(--color-text);font:inherit;font-size:.9rem}
+.lista-empresas{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:.25rem;max-height:360px;overflow-y:auto}
+.sem-resultado{padding:.6rem .75rem;font-size:.85rem;color:var(--color-text-secondary)}
+/* cada opção é um <input type="radio"> de verdade (teclado e leitor de tela), com o desenho no <span> seguinte */
+.opcao{display:block;position:relative;cursor:pointer}
+.opcao input{position:absolute;inset:0;width:100%;height:100%;margin:0;opacity:0;cursor:pointer}
+.opcao__corpo{display:flex;align-items:center;gap:.65rem;border:1px solid transparent;border-radius:var(--radius-md);
+  transition:background-color var(--transition-fast),border-color var(--transition-fast)}
+.opcao:hover .opcao__corpo{background:var(--color-surface-raised)}
+.opcao input:checked+.opcao__corpo{border-color:var(--color-green);background:var(--color-green-dim)}
+.opcao input:focus-visible+.opcao__corpo{outline:2px solid var(--color-blue);outline-offset:2px}
+.empresa-item .opcao__corpo{min-height:52px;padding:0 .75rem 0 .65rem}
+.avatar{flex:none;width:32px;height:32px;border-radius:8px;background:linear-gradient(135deg,#0f7f4b,#2563eb);color:#fff;
+  display:flex;align-items:center;justify-content:center;font-size:.75rem;font-weight:700}
+.opcao__nome{flex:1;min-width:0;font-size:.9rem;font-weight:600;overflow-wrap:anywhere}
+.opcao__nota{flex:none;font-size:.75rem;font-weight:700;color:var(--color-text-secondary)}
+.escolha-contas{flex:1;min-width:0;padding:1.25rem 1.5rem;display:flex;flex-direction:column;gap:.9rem}
+.contas-topo{display:flex;align-items:center;justify-content:space-between;gap:.5rem 1rem;flex-wrap:wrap}
+.rotulo{font-size:.75rem;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--color-text-secondary)}
+.conta-detalhe{font-size:.82rem;color:var(--color-text-secondary)}
+.lista-contas{display:flex;flex-direction:column;gap:.6rem}
+.conta-item .opcao__corpo{padding:.85rem 1rem;gap:.9rem;border-width:1.5px;border-color:var(--color-border)}
+.conta-item input:checked+.opcao__corpo{border-color:var(--color-green)}
+.radio-pino{flex:none;width:22px;height:22px;box-sizing:border-box;border-radius:50%;border:2px solid var(--cb-tracejado);
+  background:var(--color-surface)}
+.opcao input:checked+.opcao__corpo .radio-pino{border:6px solid var(--cb-verde-solido)}
+.banco-tile{flex:none;width:44px;height:44px;border-radius:12px;background:var(--color-surface);border:1px solid var(--color-border);
+  display:flex;align-items:center;justify-content:center;color:var(--color-text)}
+.conta-texto{flex:1;min-width:0;display:flex;flex-direction:column}
+.conta-texto strong{font-size:.95rem;font-weight:700}
+.conta-texto strong span{color:var(--color-text-secondary);font-weight:500}
+.conta-texto>span{font-size:.88rem;color:var(--color-text-secondary)}
+.pilula-sck{flex:none;padding:.25rem .65rem;border-radius:999px;background:var(--color-blue-dim);color:var(--cb-pilula-texto);
+  font-size:.75rem;font-weight:700;white-space:nowrap}
+#contas-dica:empty{display:none}
+#contas-dica{margin:0;font-size:.82rem}
 
 /* ---------------------------------------------- dois campos de importação */
 .cartao-arquivos .dois-campos{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1rem;margin-top:1rem}
-.campo-arquivo h3{margin:0 0 .6rem;font-size:.8rem;font-weight:700;letter-spacing:.04em;text-transform:uppercase;
+.campo-arquivo h3{margin:0 0 .6rem;font-size:.75rem;font-weight:700;letter-spacing:.05em;text-transform:uppercase;
   color:var(--color-text-secondary)}
-.campo-arquivo .solta{padding:1.6rem 1rem}
-.resumo-arquivo:not(:empty){margin-top:.7rem;padding:.7rem .9rem;border:1px solid var(--color-border);
-  border-radius:var(--radius-md);background:var(--color-surface-raised);font-size:.82rem;
-  display:flex;align-items:flex-start;gap:.6rem}
-.resumo-arquivo .ok{flex:none;color:var(--color-green-hover)}
-.resumo-arquivo .corpo{flex:1;min-width:0;display:flex;flex-direction:column;gap:.15rem}
-.resumo-arquivo .nome{font-weight:600;word-break:break-word}
+.solta{min-height:150px;box-sizing:border-box;padding:1.1rem;border:1.5px dashed var(--cb-tracejado);border-radius:12px;
+  background:var(--color-surface-raised);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.5rem;
+  text-align:center;cursor:pointer;transition:border-color var(--transition-fast),background-color var(--transition-fast)}
+.solta:hover,.solta.ativa,.campo-arquivo.ativa .solta{border-color:var(--color-green);background:var(--color-green-dim)}
+.solta:focus-visible{outline:2px solid var(--color-blue);outline-offset:3px}
+.solta.lendo{opacity:.6;pointer-events:none}
+.solta__ico{width:44px;height:44px;border-radius:50%;background:var(--color-blue-dim);color:var(--cb-pilula-texto);
+  display:flex;align-items:center;justify-content:center}
+.solta strong{font-size:.9rem}
+.solta__ajuda{color:var(--color-text-secondary);font-size:.82rem}
+/* arquivo já lido: o cartão verde ocupa o lugar da área de soltar */
+.campo-arquivo:has(.resumo-arquivo:not(:empty)) .solta{display:none}
+.resumo-arquivo:not(:empty){min-height:150px;box-sizing:border-box;padding:1.1rem;border:1.5px solid var(--color-green);
+  border-radius:12px;background:var(--color-green-dim);display:flex;flex-direction:column;align-items:center;
+  justify-content:center;gap:.5rem;text-align:center;font-size:.85rem}
+.campo-arquivo.ativa .resumo-arquivo:not(:empty){border-style:dashed}
+.resumo-arquivo .ok-circulo{flex:none;width:44px;height:44px;border-radius:50%;background:var(--cb-verde-solido);color:#fff;
+  display:flex;align-items:center;justify-content:center}
+.resumo-arquivo .corpo{min-width:0;max-width:100%;display:flex;flex-direction:column;gap:.1rem}
+.resumo-arquivo .nome{font-weight:700;font-size:.9rem;word-break:break-word}
 .resumo-arquivo .detalhe{color:var(--color-text-secondary)}
-.trocar{flex:none;padding:.3rem .6rem;border:1px solid var(--color-border);border-radius:var(--radius-sm);
-  background:transparent;color:var(--color-text-secondary);font:inherit;font-size:.78rem;font-weight:600;cursor:pointer}
+.trocar{flex:none;padding:.35rem .8rem;border:1px solid var(--color-border);border-radius:8px;
+  background:var(--color-surface);color:var(--color-text-secondary);font:inherit;font-size:.8rem;font-weight:600;cursor:pointer}
 .trocar:hover{color:var(--color-text);border-color:var(--color-blue);background:var(--color-blue-dim)}
 .trocar:focus-visible{outline:2px solid var(--color-blue);outline-offset:2px}
 #upload-msg:not(:empty){margin-top:1rem}
@@ -198,7 +245,15 @@ h2{font-size:.95rem;font-weight:700;margin:0 0 1rem;letter-spacing:-.01em}
 
 /* ---------------------------------------------- celular */
 @media (max-width:720px){
-  .escolha,.cartao-arquivos .dois-campos,.cartoes{grid-template-columns:minmax(0,1fr)}
+  .cartao-arquivos .dois-campos,.cartoes{grid-template-columns:minmax(0,1fr)}
+  .escolha-corpo{flex-direction:column}
+  .escolha-empresas{width:auto;border-right:0;border-bottom:1px solid var(--color-border)}
+  .lista-empresas{max-height:220px}
+  .escolha-contas{padding:1rem}
+  .conta-item .opcao__corpo{flex-wrap:wrap}
+  .conta-texto{flex:1 1 9rem}
+  /* o selo do SCK desce para a linha de baixo, alinhado ao texto da conta (22px do botão + 44px do ícone + 2 vãos de .9rem) */
+  .pilula-sck{margin-left:calc(22px + 44px + 1.8rem)}
   .bloco-comp{padding:1rem 1rem 0}
   .bloco-comp:last-child{padding-bottom:1rem}
   /* no celular cada linha da tabela vira um bloco: espremer colunas quebrava nomes no meio */
