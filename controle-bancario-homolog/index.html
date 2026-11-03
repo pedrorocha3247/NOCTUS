@@ -183,6 +183,24 @@
     <!-- Parte 3: lançamentos da empresa clicada no cabeçalho (modelo A) -->
     <div class="lanc-detalhe oculto" id="lanc-detalhe" role="dialog" aria-labelledby="lanc-detalhe-titulo"></div>
   </section>
+
+  <!-- Validação (03/11/2026, modelo 1 escolhido pelo Rocha): checklist OPCIONAL por empresa. A tabela só aparece depois de clicar no botão. -->
+  <section class="validacao oculto" id="validacao" aria-label="Validação">
+    <button type="button" class="btn-validacao" id="btn-validacao" aria-expanded="false" aria-controls="validacao-cartao">
+      <svg class="validacao-ic" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>
+      Validação
+      <svg class="validacao-seta" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+    </button>
+    <div id="validacao-msg" aria-live="polite"></div>
+    <div class="cartao validacao-cartao oculto" id="validacao-cartao">
+      <div class="valid-rolagem">
+        <table class="tabela-valid" aria-label="Validação por empresa">
+          <thead><tr><th scope="col">Empresa</th><th scope="col">Extrato</th><th scope="col">Comprovantes</th><th scope="col">Suprimento</th><th scope="col">Baixa Compromisso</th><th scope="col">Situação</th></tr></thead>
+          <tbody id="validacao-corpo"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
 </main>
 
 <script type="module" src="./controle-bancario.js"></script>
