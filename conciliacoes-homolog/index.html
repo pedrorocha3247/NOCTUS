@@ -52,21 +52,32 @@
 
 <main id="modulo" class="oculto">
 
-  <!-- 1. escolha da empresa e da conta (vem de contas.js + o código do SCK) -->
-  <section class="cartao" aria-labelledby="escolha-titulo">
-    <h2 id="escolha-titulo">Empresa e conta</h2>
-    <p class="sub" id="escolha-sub">Escolha a conta que vai ser conciliada.</p>
-    <div class="escolha">
-      <label class="campo">
-        <span>Empresa</span>
-        <select id="sel-empresa"></select>
-      </label>
-      <label class="campo">
-        <span>Conta bancária</span>
-        <select id="sel-conta"></select>
-      </label>
+  <!-- 1. escolha da empresa e da conta (vem de contas.js + o código do SCK). Modelo B, escolhido pelo Rocha em 03/11/2026:
+       lista de empresas à esquerda e, à direita, as contas da empresa marcada. Os <select> escondidos guardam a escolha. -->
+  <section class="cartao cartao-escolha" aria-labelledby="escolha-titulo">
+    <div class="escolha-topo">
+      <h2 id="escolha-titulo">Empresa e conta</h2>
+      <p class="sub" id="escolha-sub">Escolha a conta que vai ser conciliada.</p>
     </div>
-    <p class="conta-detalhe" id="conta-detalhe"></p>
+    <div class="escolha-corpo" id="escolha-corpo">
+      <div class="escolha-empresas">
+        <label class="busca-empresa" hidden>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM21 21l-4.3-4.3"/></svg>
+          <input type="search" id="busca-empresa" placeholder="Buscar empresa" aria-label="Buscar empresa" autocomplete="off">
+        </label>
+        <ul class="lista-empresas" id="lista-empresas" aria-label="Empresas"></ul>
+      </div>
+      <div class="escolha-contas">
+        <div class="contas-topo">
+          <span class="rotulo" id="contas-titulo"></span>
+          <span class="conta-detalhe" id="conta-detalhe"></span>
+        </div>
+        <div class="lista-contas" id="lista-contas" role="group" aria-labelledby="contas-titulo"></div>
+        <p class="sub" id="contas-dica"></p>
+      </div>
+    </div>
+    <select id="sel-empresa" hidden aria-hidden="true" tabindex="-1"></select>
+    <select id="sel-conta" hidden aria-hidden="true" tabindex="-1"></select>
   </section>
 
   <!-- 2. os dois campos de importação, independentes -->
@@ -76,8 +87,9 @@
       <div class="campo-arquivo">
         <h3>Relatório de conciliação (SCK)</h3>
         <div class="solta" id="solta-sck" role="button" tabindex="0" aria-controls="arq-sck">
+          <span class="solta__ico" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4M7 9l5-5 5 5M5 20h14"/></svg></span>
           <strong>Clique ou arraste o relatório</strong>
-          <span>Excel exportado do SCK (.xls ou .xlsx)</span>
+          <span class="solta__ajuda">Excel exportado do SCK (.xls ou .xlsx)</span>
         </div>
         <input type="file" id="arq-sck" class="oculto"
                accept=".xls,.xlsx,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">
@@ -86,8 +98,9 @@
       <div class="campo-arquivo">
         <h3>Extrato bancário (.OFX)</h3>
         <div class="solta" id="solta-ofx" role="button" tabindex="0" aria-controls="arq-ofx">
+          <span class="solta__ico" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4M7 9l5-5 5 5M5 20h14"/></svg></span>
           <strong>Clique ou arraste o extrato</strong>
-          <span>Arquivo .OFX baixado no banco</span>
+          <span class="solta__ajuda">Arquivo .OFX baixado no banco</span>
         </div>
         <input type="file" id="arq-ofx" class="oculto" accept=".ofx,text/plain,application/x-ofx">
         <div class="resumo-arquivo" id="resumo-ofx" aria-live="polite"></div>
