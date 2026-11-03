@@ -153,7 +153,14 @@
       <div class="kpi"><h2 class="kpi-rot" id="resumo-titulo">Fluxo</h2><span class="kpi-val" id="resumo-fluxo"></span></div>
       <div class="kpi"><span class="kpi-rot">Relatório de débito</span><span class="kpi-val" id="resumo-relatorio"></span></div>
       <div class="kpi"><span class="kpi-rot">Diferença</span><span class="kpi-val" id="resumo-diferenca"></span></div>
-      <span class="pilula pilula-neutra" id="resumo-situacao"></span>
+      <!-- 03/11/2026: botão de exportar a tabela resumo para Excel, acima do selo de divergências -->
+      <div class="resumo-acoes">
+        <button type="button" class="btn-exportar" id="btn-exportar" disabled title="Importe o relatório de débito para exportar">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v10M8 10l4 4 4-4"/><path d="M5 19h14"/></svg>
+          Exportar para Excel
+        </button>
+        <span class="pilula pilula-neutra" id="resumo-situacao"></span>
+      </div>
     </div>
     <div id="resumo-aviso" aria-live="polite"></div>
     <!-- 30/10: sem rolagem nem setas; o quadro cresce e, se preciso, quebra as empresas em mais faixas -->
