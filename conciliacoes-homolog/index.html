@@ -15,6 +15,19 @@
   try { if (localStorage.getItem("noctus.tema") === "claro") document.documentElement.dataset.tema = "claro"; } catch (e) {}
 </script>
 <script src="../noctus-erros.js"></script>
+<style>.decidindo #em-desenvolvimento{display:none}</style>
+<script>
+  /* 03/11/2026: quem tem papel de administrador no navegador não vê o quadro "Módulo em desenvolvimento" enquanto o
+     servidor confirma o perfil (antes ele aparecia por um instante e sumia). O papel guardado só decide se a página
+     espera; quem decide continua sendo o servidor. O módulo tira a marca assim que decide; se algo travar, ela cai sozinha. */
+  try {
+    var s = JSON.parse(localStorage.getItem("sipep.session") || "null");
+    if (s && s.user && Array.isArray(s.user.roles) && s.user.roles.indexOf("admin") >= 0) {
+      document.documentElement.classList.add("decidindo");
+      setTimeout(function () { document.documentElement.classList.remove("decidindo"); }, 8000);
+    }
+  } catch (e) {}
+</script>
 <link rel="stylesheet" href="./conciliacoes.css">
 </head>
 <body>
