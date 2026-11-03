@@ -64,6 +64,26 @@ export function identificarPix(memo) {
   return { nome, documento };
 }
 
+/**
+ * Histórico do lançamento na planilha de importação (Parte 2, regra do Rocha, 02/11/2026):
+ *   extrato:  "PIX RECEBIDO FULANO D30/10 FULANO DE TAL 000.000.000-00"
+ *   planilha: "PIX RECEBIDO 30/10 - FULANO DE TAL 000.000.000-00"
+ * Tira o nome abreviado colado na data e põe " - " antes do nome completo.
+ * `padrao:false` quando o histórico não tem a forma esperada: aí devolve o
+ * original sem mexer, e a tela pede conferência (nunca inventa um histórico).
+ * `dataConfere:false` quando o dd/mm do histórico difere da data do lançamento.
+ */
+export function historicoImportacao(memo, data = null) {
+  const original = String(memo || "").replace(/\s+/g, " ").trim();
+  const m = /^PIX\s+RECEBIDO\s+.*?(\d{2}\/\d{2})\s+(.+)$/i.exec(original);
+  if (!m) return { texto: original, padrao: false, dataConfere: null };
+  const { nome, documento } = identificarPix(original);
+  if (!nome) return { texto: original, padrao: false, dataConfere: null };
+  const ddmm = m[1];
+  const dataConfere = data?.rotulo ? data.rotulo.slice(0, 5) === ddmm : null;
+  return { texto: `PIX RECEBIDO ${ddmm} - ${nome}${documento ? ` ${documento}` : ""}`, padrao: true, dataConfere };
+}
+
 /* ------------------------------------------------------------ regras */
 /**
  * Recebe o resultado de lerConciliacaoSck e de lerExtratoOfx (com dataAlvo).
