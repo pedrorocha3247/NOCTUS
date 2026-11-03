@@ -14,6 +14,20 @@
   try { if (localStorage.getItem("noctus.tema") === "claro") document.documentElement.dataset.tema = "claro"; } catch (e) {}
 </script>
 <script src="../noctus-erros.js"></script>
+<style>.abrindo-config #tela-upload{display:none}</style>
+<script>
+  /* 03/11/2026: Configurações abrem em conferencia/?config=1. Antes, a página nascia mostrando a tela de envio do relatório
+     (e o título "Conferência de Pagamentos") e só trocava quando o JavaScript terminava de carregar. Agora a tela de envio
+     já nasce escondida e o título já nasce certo; o conferencia.js tira a marca ao abrir as Configurações (ou ela cai sozinha). */
+  try {
+    if (new URLSearchParams(location.search).get("config") === "1") {
+      window.__abrindoConfig = true;
+      document.documentElement.classList.add("abrindo-config");
+      document.title = "Configurações — NOCTUS";
+      setTimeout(function () { document.documentElement.classList.remove("abrindo-config"); }, 10000);
+    }
+  } catch (e) {}
+</script>
 <link rel="stylesheet" href="./conferencia.css">
 </head>
 <body>
@@ -21,6 +35,7 @@
 <header class="topo">
   <div class="topo-titulo">
     <h1>Conferência de Pagamentos <span>· NOCTUS</span></h1>
+    <script>if (window.__abrindoConfig) document.querySelector(".topo h1").innerHTML = "Configurações <span>· NOCTUS</span>";</script>
     <button type="button" class="anuncio-link" id="btn-anuncio" aria-haspopup="dialog" hidden>
       <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="15" height="14" rx="3"/><path d="M17 10l5-3v10l-5-3z"/></svg>
       Assistir ao anúncio
