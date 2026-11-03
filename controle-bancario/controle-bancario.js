@@ -936,9 +936,10 @@ async function iniciar() {
   if (sessaoGravada()?.precisaEmail) { location.replace("../conta/#email"); return; }
   if (!ehAdminNoNavegador()) return;              // perfil "user": continua vendo "Módulo em desenvolvimento"
   const confirmado = await adminConfirmado();
-  if (confirmado === "nao") return;
+  if (confirmado === "nao") { liberarAviso(); return; }
   $("em-desenvolvimento").classList.add("oculto");
   $("modulo").classList.remove("oculto");
+  liberarAviso();
   ligarTela();
   if (confirmado === "falha") {
     $("upload-msg").innerHTML = alerta("erro", esc(msgErro(new Error("confirmação do usuário sem resposta"),
@@ -967,4 +968,7 @@ async function iniciar() {
   desenhar();
 }
 
-iniciar().catch((e) => registrarErro(e, "abertura do Controle Bancário"));
+/** Tira a marca "decidindo" do HTML: até aqui o quadro "em desenvolvimento" ficava escondido para o administrador (03/11/2026). */
+function liberarAviso() { document.documentElement.classList.remove("decidindo"); }
+
+iniciar().catch((e) => { liberarAviso(); registrarErro(e, "abertura do Controle Bancário"); });
