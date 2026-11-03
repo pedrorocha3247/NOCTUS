@@ -49,7 +49,9 @@
     <div id="upload-msg" aria-live="polite"></div>
   </section>
 
-  <!-- tabela no modelo C (escolhido pelo Rocha em 30/10/2026): total em destaque, linhas alternadas, cartão compacto -->
+  <!-- tabela no modelo C (escolhido pelo Rocha em 30/10/2026): total em destaque, linhas alternadas, cartão compacto.
+       Parte 3 (03/11/2026, modelo A): ao lado fica o painel de lançamentos. -->
+  <div class="linha-saidas">
   <section class="cartao cartao-tabela oculto" id="cartao-tabela" aria-labelledby="tabela-titulo">
     <div class="tabela-topo">
       <div>
@@ -90,6 +92,61 @@
     </div>
   </section>
 
+  <!-- Parte 3 (03/11/2026), modelo A: botão LANÇAMENTOS, soma por categoria e "Falta justificar" -->
+  <aside class="painel-lanc oculto" id="painel-lanc" aria-label="Lançamentos">
+    <button type="button" class="btn-lanc" id="btn-lanc" aria-haspopup="dialog" aria-expanded="false" aria-controls="lanc-dialogo">
+      <span class="btn-lanc__mais" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span>
+      Lançamentos
+    </button>
+    <div id="lanc-msg" aria-live="polite"></div>
+    <div class="lanc-cartao" id="lanc-cartao">
+      <div class="lanc-linha lanc-cab"><span>Categoria</span><span>Valor (R$)</span></div>
+      <div id="lanc-categorias"></div>
+      <div class="lanc-linha lanc-total"><span>Total</span><span id="lanc-total"></span></div>
+      <div class="lanc-linha lanc-sub"><span>Diferença da tabela resumo</span><span id="lanc-dif"></span></div>
+      <div class="lanc-linha lanc-falta"><span>Falta justificar</span><span class="lanc-pill" id="lanc-falta"></span></div>
+    </div>
+
+    <div class="lanc-fundo oculto" id="lanc-fundo"></div>
+    <div class="lanc-dialogo oculto" id="lanc-dialogo" role="dialog" aria-labelledby="lanc-dialogo-titulo">
+      <div class="lanc-dialogo__topo">
+        <h2 id="lanc-dialogo-titulo">Novo lançamento</h2>
+        <button type="button" class="lanc-fechar" id="lanc-fechar" aria-label="Fechar" title="Fechar"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+      </div>
+      <form id="lanc-form" novalidate>
+        <label class="lanc-campo">Categoria
+          <select id="lanc-categoria" name="categoria"></select>
+          <span class="lanc-erro" id="erro-categoria" role="alert"></span>
+        </label>
+        <label class="lanc-campo">Valor (R$)
+          <input type="text" id="lanc-valor" name="valor" inputmode="decimal" autocomplete="off" placeholder="0,00" class="lanc-valor">
+          <span class="lanc-dica">Positivo: explica fluxo maior. Negativo: explica débito maior.</span>
+          <span class="lanc-erro" id="erro-valor" role="alert"></span>
+        </label>
+        <label class="lanc-campo">Empresa
+          <select id="lanc-empresa" name="empresa"></select>
+          <span class="lanc-erro" id="erro-empresa" role="alert"></span>
+        </label>
+        <div class="lanc-banco oculto" id="lanc-banco-caixa">
+          <label class="lanc-campo"><span id="lanc-banco-rotulo">Banco</span>
+            <select id="lanc-banco" name="banco"></select>
+            <span class="lanc-erro" id="erro-banco" role="alert"></span>
+          </label>
+        </div>
+        <label class="lanc-campo">Descrição
+          <textarea id="lanc-descricao" name="descricao" rows="2" maxlength="300"></textarea>
+          <span class="lanc-erro" id="erro-descricao" role="alert"></span>
+        </label>
+        <div id="lanc-form-msg" aria-live="polite"></div>
+        <div class="lanc-acoes">
+          <button type="button" class="lanc-btn" id="lanc-cancelar">Cancelar</button>
+          <button type="submit" class="lanc-btn lanc-btn--principal" id="lanc-salvar">Salvar lançamento</button>
+        </div>
+      </form>
+    </div>
+  </aside>
+  </div>
+
   <!-- Parte 2 (30/10/2026), modelo B: Fluxo × Relatório de débito da data aberta -->
   <section class="cartao cartao-resumo oculto" id="cartao-resumo" aria-labelledby="resumo-titulo">
     <div class="resumo-topo">
@@ -103,6 +160,8 @@
     <div class="resumo-caixa" id="resumo-caixa">
       <table class="tabela-resumo" id="resumo-tabela" aria-label="Fluxo × Relatório de débito por empresa"></table>
     </div>
+    <!-- Parte 3: lançamentos da empresa clicada no cabeçalho (modelo A) -->
+    <div class="lanc-detalhe oculto" id="lanc-detalhe" role="dialog" aria-labelledby="lanc-detalhe-titulo"></div>
   </section>
 </main>
 
