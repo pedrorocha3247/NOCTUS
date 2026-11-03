@@ -20,6 +20,7 @@ import { lerConciliacaoSck, linhasDoExcel } from "./sck.js";
 import { lerExtratoOfx, textoDoOfx } from "./ofx.js";
 import { montarConciliacao, conferirConta, rotuloConta } from "./comparar.js";
 import { comporDiferenca, composicaoParaGravar } from "./composicao.js";
+import { linhasImportacao, planilhaImportacao, nomeArquivoImportacao } from "./importacao.js";
 import { empresasHabilitadas, contaPorId } from "./contas-sck.js";
 
 const SB_URL = "https://wyyqjlwzphlhnplmirlg.supabase.co";
@@ -133,6 +134,8 @@ const estado = {
   textoOfx: "",      // guardado para reler o extrato quando a data do SCK chegar depois
   naoSalvo: false,
   composicaoAberta: false,   // recolhida por padrão (pedido do Rocha, 02/11/2026)
+  importacaoAnterior: null,  // registro da última planilha gerada para esta conta + data (servidor)
+  confirmarDeNovo: false,    // o aviso de "já foi gerada" está aberto, esperando "Gerar mesmo assim"
 };
 
 /* ------------------------------------------------------------ servidor */
@@ -156,7 +159,9 @@ async function salvar() {
     comparacao: { situacao: quadro.situacao, linhas: quadro.linhas.map(({ chave, sck: s, banco, diferenca, situacao }) =>
                     ({ chave, sck: s, banco, diferenca, situacao })),
                   // estruturada para a Parte 2 (sem nome nem CPF/CNPJ: o FITID liga ao extrato)
-                  composicao: composicaoParaGravar(comporDiferenca({ sck, ofx })) },
+                  composicao: composicaoParaGravar(comporDiferenca({ sck, ofx })),
+                  // registro da planilha de importação gerada (evita importar duas vezes no SCK)
+                  ...(estado.importacaoAnterior ? { importacao: estado.importacaoAnterior } : {}) },
     arquivo_sck: estado.nomeSck || null,
     arquivo_ofx: estado.nomeOfx || null,
     atualizado_em: new Date().toISOString(),
@@ -198,6 +203,10 @@ function montarEscolha() {
     $("cartao-quadro").classList.add("oculto");
     $("cartao-composicao").classList.add("oculto");
     estado.composicaoAberta = false;
+    estado.importacaoAnterior = null;
+    estado.confirmarDeNovo = false;
+    $("cartao-importacao").classList.add("oculto");
+    $("importacao-msg").innerHTML = "";
     $("conta-detalhe").textContent = estado.conta
       ? `Conta ${estado.conta.codigoSck} no SCK · CNPJ ${estado.conta.cnpj}`
       : "";
@@ -323,6 +332,15 @@ function realinharExtrato() {
 async function depoisDeImportar() {
   desenharQuadro();
   if (!estado.sck || !estado.ofx) return;
+  // a gravação substitui a coluna "comparacao" inteira: traz antes o registro de
+  // planilha já gerada para esta conta e data, para ele não se perder
+  try {
+    const salva = await carregarSalva(estado.conta, estado.sck.data.iso);
+    estado.importacaoAnterior = salva?.comparacao?.importacao || null;
+  } catch { /* sem o registro: segue; no pior caso o aviso de geração repetida não aparece */ }
+  estado.confirmarDeNovo = false;
+  $("importacao-msg").innerHTML = "";   // arquivo novo: a mensagem da geração anterior não vale mais
+  desenharImportacao();
   try {
     await salvar();
     estado.naoSalvo = false;
@@ -335,11 +353,21 @@ async function depoisDeImportar() {
 }
 
 /* ------------------------------------------------------------ quadro (modelo A) */
+/*
+ * Avisos dos leitores que NÃO aparecem na tela (pedido do Rocha, 02/11/2026 20:54),
+ * porque se repetem todo dia com o extrato do Itaú e não pedem ação:
+ *   - extrato sem sinal: o cartão Saídas já mostra "Não identificado" e explica;
+ *   - LEDGERBAL de outra data: informação técnica; o saldo usado é o do dia.
+ * Continuam nos leitores (o "sem sinal" é o que faz o cartão Saídas não dizer
+ * "confere"), só não viram mensagem.
+ */
+const SO_INFORMATIVO = [/n[ãa]o distingue entrada de sa[íi]da/i, /LEDGERBAL/i];
 const TEXTO_SITUACAO = { conferido: "Confere", divergente: "Divergente", indefinido: "Não identificado" };
 
 function desenharQuadro() {
   const cartao = $("cartao-quadro");
   desenharComposicao();
+  desenharImportacao();
   if (!estado.sck && !estado.ofx) { cartao.classList.add("oculto"); return; }
   cartao.classList.remove("oculto");
 
@@ -378,23 +406,16 @@ function desenharQuadro() {
     </section>`;
   }).join("");
 
-  /* a Diferença Geral do próprio SCK fica à parte, sem se misturar à comparação */
+  /* A faixa da Diferença Geral do SCK e a linha dos Lançamentos Adicionados saíram
+     (pedido do Rocha, 02/11/2026 20:54): os dois números já aparecem, com explicação,
+     na composição da diferença (saldo anterior × Diferença Geral; adicionados em "Validar"). */
   const partes = [];
-  if (q.sckSozinho?.diferencaGeral != null) {
-    partes.push(`O SCK aponta <strong>Diferença Geral da Conciliação de ${esc(moeda(q.sckSozinho.diferencaGeral))}</strong>` +
-      (q.sckSozinho.saldoExtratoNoSck === 0 ? ", com o Saldo Extrato/Conta ainda zerado" : "") +
-      (q.sckSozinho.status ? ` (status <strong>${esc(q.sckSozinho.status)}</strong>)` : "") +
-      ". Esse número é do próprio SCK e não entra na comparação acima.");
-  }
-  if (estado.sck?.adicionados?.linhas?.length) {
-    partes.push(`Lançamentos Adicionados no SCK: <strong>${estado.sck.adicionados.linhas.length}, somando ` +
-      `${esc(moeda(estado.sck.adicionados.total))}</strong>. Ficam fora das entradas do dia e aparecem na composição, para validar.`);
-  }
   if (estado.naoSalvo) partes.push("Esta conciliação <strong>ainda não foi salva no servidor</strong>.");
   if (q.pendencias.length) partes.push(esc(q.pendencias.join(" ")));
   $("quadro-nota").innerHTML = partes.join("<br>");
 
-  $("quadro-aviso").innerHTML = q.alertas.map((a) => alerta("atencao", esc(a))).join("");
+  $("quadro-aviso").innerHTML = q.alertas.filter((a) => !SO_INFORMATIVO.some((r) => r.test(a)))
+    .map((a) => alerta("atencao", esc(a))).join("");
 }
 
 /* ------------------------------------------------------------ composição (regras 1.1 a 1.5) */
@@ -491,6 +512,74 @@ function aplicarRecolhimento() {
   botao.textContent = aberta ? "Ocultar composição" : "Mostrar composição";
 }
 
+/* ------------------------------------------------------------ Parte 2: planilha de importação */
+const quandoBr = (iso) => {
+  try {
+    return new Date(iso).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+  } catch { return ""; }
+};
+
+function desenharImportacao() {
+  const cartao = $("cartao-importacao");
+  if (!estado.sck || !estado.ofx) { cartao.classList.add("oculto"); return; }
+  cartao.classList.remove("oculto");
+  let r;
+  try { r = linhasImportacao({ sck: estado.sck, ofx: estado.ofx }); }
+  catch (e) { $("importacao-sub").textContent = ""; $("btn-importacao").disabled = true;
+              $("importacao-msg").innerHTML = alerta("erro", esc(msgErro(e, "Não consegui preparar os lançamentos", MSG_FALHA_GERAL))); return; }
+  const qtd = r.linhas.length;
+  $("importacao-sub").textContent = qtd
+    ? `${qtd} PIX recebido${qtd > 1 ? "s" : ""} · R$ ${moeda(r.total)} · conta ${r.linhas[0].conta} · ${estado.sck.data.rotulo}`
+    : `Nenhum PIX recebido no extrato de ${estado.sck.data.rotulo}`;
+  $("btn-importacao").disabled = !qtd;
+}
+
+/** Monta e baixa a planilha; com geração anterior registrada, pede confirmação antes. */
+async function gerarImportacao(forcar = false) {
+  const msg = $("importacao-msg");
+  let r;
+  try { r = linhasImportacao({ sck: estado.sck, ofx: estado.ofx }); }
+  catch (e) { msg.innerHTML = alerta("erro", esc(msgErro(e, "Não consegui gerar a planilha", MSG_FALHA_GERAL))); return; }
+
+  const ant = estado.importacaoAnterior;
+  if (ant && !forcar) {
+    estado.confirmarDeNovo = true;
+    msg.innerHTML = alerta("atencao",
+      `A planilha desta conta e data <strong>já foi gerada em ${esc(quandoBr(ant.geradaEm))}</strong> ` +
+      `(${esc(String(ant.quantidade))} PIX, R$ ${esc(moeda(ant.total))}). Se ela já foi importada no SCK, ` +
+      `importar de novo <strong>duplica os lançamentos</strong>.`) +
+      `<div class="acoes-confirmar"><button type="button" class="botao-principal" id="btn-importacao-confirmar">Gerar mesmo assim</button>` +
+      `<button type="button" class="botao-comp" id="btn-importacao-cancelar">Cancelar</button></div>`;
+    return;
+  }
+  estado.confirmarDeNovo = false;
+
+  try {
+    const bytes = planilhaImportacao(r.linhas);
+    const nome = nomeArquivoImportacao(r.linhas[0].conta, estado.sck.data.iso);
+    const url = URL.createObjectURL(new Blob([bytes],
+      { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
+    const a = document.createElement("a");
+    a.href = url; a.download = nome; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+
+    const avisos = r.alertas.map((t) => alerta("atencao", esc(t))).join("");
+    msg.innerHTML = alerta("ok", `Planilha <strong>${esc(nome)}</strong> gerada com ${r.linhas.length} PIX ` +
+      `(R$ ${esc(moeda(r.total))}). Importe-a no SCK.`) + avisos;
+
+    // registra a geração (só quantidade, total, FITID e hora: nada de nome ou CPF/CNPJ)
+    estado.importacaoAnterior = { geradaEm: new Date().toISOString(), quantidade: r.linhas.length, total: r.total,
+                                  fitids: r.linhas.map((l) => l.fitid), arquivo: nome };
+    try { await salvar(); estado.naoSalvo = false; }
+    catch (e) {
+      msg.innerHTML += alerta("erro", esc(msgErro(e,
+        "A planilha foi gerada, mas não consegui registrar a geração no servidor")));
+    }
+  } catch (e) {
+    msg.innerHTML = alerta("erro", esc(msgErro(e, "Não consegui gerar a planilha", MSG_FALHA_GERAL)));
+  }
+}
+
 /* ------------------------------------------------------------ tela */
 function ligarCampo(qual, aoEscolher) {
   const solta = $(`solta-${qual}`), entrada = $(`arq-${qual}`);
@@ -519,6 +608,11 @@ function ligarTela() {
   montarEscolha();
   ligarCampo("sck", importarSck);
   ligarCampo("ofx", importarOfx);
+  $("btn-importacao").addEventListener("click", () => gerarImportacao(false));
+  $("importacao-msg").addEventListener("click", (e) => {
+    if (e.target.closest("#btn-importacao-confirmar")) gerarImportacao(true);
+    else if (e.target.closest("#btn-importacao-cancelar")) { estado.confirmarDeNovo = false; $("importacao-msg").innerHTML = ""; }
+  });
   $("composicao-alternar").addEventListener("click", () => {
     estado.composicaoAberta = !estado.composicaoAberta;
     aplicarRecolhimento();
