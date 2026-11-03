@@ -4020,6 +4020,7 @@ iniciarSincronizacao();
 if (new URLSearchParams(location.search).get("config") === "1") {
   configAbertaViaHome = true;
   abrirConfig();
+  document.documentElement.classList.remove("abrindo-config");   // 03/11/2026: a tela de envio só ficou escondida até aqui
 } else {
   anuncioPrimeiraVez();
 }
