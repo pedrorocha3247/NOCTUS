@@ -331,3 +331,44 @@ h2{font-size:.95rem;font-weight:700;margin:0 0 1rem;letter-spacing:-.01em}
   .tabela-resumo tr > :first-child{padding-left:1.1rem}
   .tabela-resumo th:last-child,.tabela-resumo td:last-child{padding-right:1.1rem}
 }
+
+/* Validação (03/11/2026, modelo 1): checklist opcional por empresa, abaixo da tabela resumo.
+   Botão no estilo do "Exportar para Excel"; a tabela só aparece depois do clique. A tabela resumo não muda de estrutura:
+   a empresa concluída só ganha a COR VERDE no texto (nome, Fluxo e Relatório). */
+.validacao{margin-top:.9rem}
+.btn-validacao{display:inline-flex;align-items:center;gap:.55rem;min-height:40px;padding:0 1rem;border:1px solid var(--color-border);
+  border-radius:var(--radius-md);background:var(--color-surface-raised);color:var(--color-text);font:inherit;font-size:.85rem;font-weight:600;
+  cursor:pointer;transition:border-color var(--transition-fast),color var(--transition-fast)}
+.btn-validacao .validacao-ic{color:var(--color-green);flex:none}
+.btn-validacao .validacao-seta{color:var(--color-text-secondary);flex:none;transition:transform var(--transition-fast)}
+.btn-validacao[aria-expanded="true"] .validacao-seta{transform:rotate(180deg)}
+.btn-validacao:hover{border-color:var(--color-green)}
+.btn-validacao:focus-visible{outline:2px solid var(--color-blue);outline-offset:3px}
+#validacao-msg:not(:empty){margin-top:.7rem}
+.validacao-cartao{margin-top:.7rem;padding:0;overflow:hidden}
+.valid-rolagem{overflow-x:auto}
+.tabela-valid{width:100%;min-width:600px;border-collapse:collapse;font-size:.88rem}
+.tabela-valid th,.tabela-valid td{padding:.65rem .75rem;text-align:center;white-space:nowrap}
+.tabela-valid thead th{background:var(--color-surface-raised);color:var(--color-text-secondary);font-size:.72rem;font-weight:700;
+  letter-spacing:.04em;text-transform:uppercase;white-space:normal;vertical-align:middle}
+.tabela-valid thead th:first-child,.tabela-valid tbody th{text-align:left;padding-left:1.5rem}
+.tabela-valid thead th:last-child,.tabela-valid td:last-child{text-align:right;padding-right:1.5rem}
+.tabela-valid tbody th{font-weight:700;color:var(--color-text)}
+.tabela-valid tbody tr{border-top:1px solid var(--color-border)}
+.tabela-valid tbody tr:nth-child(odd) > *{background:var(--cb-zebra)}
+.valid-cel{padding:0!important}
+.valid-marca{display:flex;align-items:center;justify-content:center;min-height:44px;cursor:pointer}
+.valid-cb{appearance:none;-webkit-appearance:none;margin:0;position:relative;width:22px;height:22px;border:1.6px solid var(--color-text-secondary);
+  border-radius:6px;background:transparent;cursor:pointer}
+.valid-cb:checked{background:var(--color-green);border-color:var(--color-green)}
+.valid-cb:checked::after{content:"";position:absolute;left:7px;top:2px;width:5px;height:11px;border:solid #fff;border-width:0 2px 2px 0;transform:rotate(45deg)}
+.valid-cb:disabled{opacity:.45;cursor:default}
+.valid-cb:focus-visible{outline:2px solid var(--color-blue);outline-offset:3px}
+.valid-sit{font-weight:600;color:var(--color-text-secondary);font-variant-numeric:tabular-nums}
+.valid-sit.ok{color:var(--color-green-hover)}
+/* empresa concluída na tabela resumo: só a cor do texto (nome, Fluxo e Relatório) */
+.tabela-resumo thead th.validada,.tabela-resumo tbody td.validada,.tabela-resumo thead th.validada .cab-lanc{color:var(--color-green-hover)}
+@media (max-width:560px){
+  .tabela-valid thead th:first-child,.tabela-valid tbody th{padding-left:1.1rem}
+  .tabela-valid thead th:last-child,.tabela-valid td:last-child{padding-right:1.1rem}
+}
