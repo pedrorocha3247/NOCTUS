@@ -183,14 +183,62 @@ async function carregarSalva(conta, dataIso) {
 }
 
 /* ------------------------------------------------------------ empresa e conta */
+/* Modelo B (03/11/2026): lista de empresas e, ao lado, as contas da empresa marcada. Os dois <select> escondidos
+   continuam sendo quem guarda a escolha; a lista só desenha e repassa o clique para eles. */
+const semAcento = (t) => String(t ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+const iniciais = (nome) => {
+  const p = String(nome ?? "").trim().split(/\s+/).filter(Boolean);
+  return (p.length > 1 ? p[0][0] + p[1][0] : (p[0] || "").slice(0, 2)).toUpperCase();
+};
+/** "Itaú - 341" → {nome: "Itaú", cod: "341"}; "Daycoval" → {nome: "Daycoval", cod: ""}. */
+const partesBanco = (banco) => {
+  const m = /^(.*?)\s*-\s*(\d+)\s*$/.exec(String(banco ?? "").trim());
+  return m && m[1] ? { nome: m[1], cod: m[2] } : { nome: String(banco ?? "").trim(), cod: "" };
+};
+const ICONE_BANCO = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" ' +
+  'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 9.5 12 4l9 5.5M5.5 10.5v7M10 10.5v7M14 10.5v7M18.5 10.5v7M3 20h18"/></svg>';
+
 function montarEscolha() {
   const empresas = empresasHabilitadas();
   const selE = $("sel-empresa"), selC = $("sel-conta");
+  const listaE = $("lista-empresas"), listaC = $("lista-contas"), busca = $("busca-empresa");
   selE.innerHTML = empresas.map((e) => `<option value="${esc(e.codigo)}">${esc(e.empresa)}</option>`).join("");
+
+  // a busca só aparece quando a lista já é longa
+  busca.closest(".busca-empresa").hidden = empresas.length <= 5;
+
+  const desenharEmpresas = () => {
+    const q = semAcento(busca.value).trim();
+    const visiveis = empresas.filter((e) => !q || semAcento(e.empresa).includes(q));
+    listaE.innerHTML = visiveis.length ? visiveis.map((e) =>
+      `<li><label class="opcao empresa-item"><input type="radio" name="opt-empresa" value="${esc(e.codigo)}"` +
+      `${e.codigo === selE.value ? " checked" : ""}><span class="opcao__corpo">` +
+      `<span class="avatar" aria-hidden="true">${esc(iniciais(e.empresa))}</span>` +
+      `<span class="opcao__nome">${esc(e.empresa)}</span>` +
+      `<span class="opcao__nota">${e.contas.length} ${e.contas.length === 1 ? "conta" : "contas"}</span></span></label></li>`
+    ).join("") : `<li class="sem-resultado">Nenhuma empresa encontrada.</li>`;
+  };
+  const desenharContas = (emp) => {
+    $("contas-titulo").textContent = emp ? `Contas de ${emp.empresa}` : "";
+    listaC.innerHTML = (emp?.contas || []).map((c) => {
+      const b = partesBanco(c.banco);
+      return `<label class="opcao conta-item"><input type="radio" name="opt-conta" value="${esc(c.id)}"` +
+        `${c.id === selC.value ? " checked" : ""}><span class="opcao__corpo">` +
+        `<span class="radio-pino" aria-hidden="true"></span>` +
+        `<span class="banco-tile" aria-hidden="true">${ICONE_BANCO}</span>` +
+        `<span class="conta-texto"><strong>${esc(b.nome)}${b.cod ? ` <span>· ${esc(b.cod)}</span>` : ""}</strong>` +
+        `<span>Ag. ${esc(c.agencia)} · C/C ${esc(c.conta)}</span></span>` +
+        `<span class="pilula-sck">SCK ${esc(c.codigoSck)}</span></span></label>`;
+    }).join("");
+    $("contas-dica").textContent = (emp?.contas || []).length === 1
+      ? "Quando a empresa tiver mais de uma conta habilitada, cada uma aparece aqui como uma opção." : "";
+  };
   const trocarEmpresa = () => {
     const emp = empresas.find((e) => e.codigo === selE.value) || empresas[0];
     selC.innerHTML = (emp?.contas || []).map((c) =>
       `<option value="${esc(c.id)}">${esc(rotuloConta(c))}</option>`).join("");
+    desenharEmpresas();
+    desenharContas(emp);
     trocarConta();
   };
   const trocarConta = () => {
@@ -208,16 +256,27 @@ function montarEscolha() {
     estado.confirmarDeNovo = false;
     $("cartao-importacao").classList.add("oculto");
     $("importacao-msg").innerHTML = "";
-    $("conta-detalhe").textContent = estado.conta
-      ? `Conta ${estado.conta.codigoSck} no SCK · CNPJ ${estado.conta.cnpj}`
-      : "";
+    $("conta-detalhe").textContent = estado.conta ? `CNPJ ${estado.conta.cnpj}` : "";
   };
+  listaE.addEventListener("change", (e) => {
+    if (e.target.name !== "opt-empresa") return;
+    selE.value = e.target.value;
+    trocarEmpresa();
+    listaE.querySelector("input:checked")?.focus();     // o desenho refeito não pode tirar o foco do teclado
+  });
+  listaC.addEventListener("change", (e) => {
+    if (e.target.name !== "opt-conta") return;
+    selC.value = e.target.value;
+    trocarConta();
+  });
+  busca.addEventListener("input", desenharEmpresas);
   selE.addEventListener("change", trocarEmpresa);
-  selC.addEventListener("change", trocarConta);
+  selC.addEventListener("change", () => { desenharContas(empresas.find((e) => e.codigo === selE.value)); trocarConta(); });
   trocarEmpresa();
 
   if (!empresas.length) {
     $("escolha-sub").textContent = "Nenhuma conta está habilitada para conciliação ainda.";
+    $("escolha-corpo").hidden = true;
   }
 }
 
@@ -242,13 +301,13 @@ async function carregarSheetJS() {
 }
 
 /* ------------------------------------------------------------ importação */
-const ICONE_OK = '<svg class="ok" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
-  'stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>';
+const ICONE_OK = '<svg class="ok" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
+  'stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>';
 
 function mostrarResumoArquivo(qual, nome, detalhe) {
-  $(`resumo-${qual}`).innerHTML = ICONE_OK +
+  $(`resumo-${qual}`).innerHTML = `<span class="ok-circulo">${ICONE_OK}</span>` +
     `<span class="corpo"><span class="nome">${esc(nome)}</span><span class="detalhe">${esc(detalhe)}</span></span>` +
-    `<button type="button" class="trocar" data-trocar="${qual}">Trocar</button>`;
+    `<button type="button" class="trocar" data-trocar="${qual}">Trocar arquivo</button>`;
 }
 
 async function importarSck(arquivo) {
@@ -588,13 +647,16 @@ function ligarCampo(qual, aoEscolher) {
   solta.addEventListener("keydown", (e) => {
     if (e.key === "Enter" || e.key === " ") { e.preventDefault(); entrada.click(); }
   });
-  ["dragenter", "dragover"].forEach((ev) => solta.addEventListener(ev, (e) => {
-    e.preventDefault(); solta.classList.add("ativa");
+  const alvo = solta.closest(".campo-arquivo") || solta;
+  ["dragenter", "dragover"].forEach((ev) => alvo.addEventListener(ev, (e) => {
+    e.preventDefault(); alvo.classList.add("ativa");
   }));
-  ["dragleave", "drop"].forEach((ev) => solta.addEventListener(ev, (e) => {
-    e.preventDefault(); solta.classList.remove("ativa");
+  ["dragleave", "drop"].forEach((ev) => alvo.addEventListener(ev, (e) => {
+    e.preventDefault();
+    if (ev === "dragleave" && e.relatedTarget && alvo.contains(e.relatedTarget)) return;   // passou para um filho: segue ativa
+    alvo.classList.remove("ativa");
   }));
-  solta.addEventListener("drop", (e) => {
+  alvo.addEventListener("drop", (e) => {
     const f = e.dataTransfer?.files?.[0];
     if (f) aoEscolher(f);
   });
