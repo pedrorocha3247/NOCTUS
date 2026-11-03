@@ -3,10 +3,11 @@
  * conta, importação do relatório de conciliação do SCK e do extrato .OFX, e
  * comparação de saldo, entradas e saídas.
  *
- * Acesso: enquanto o módulo está em construção, SÓ o administrador principal
- * (Rocha) vê o conteúdo; para os demais a página continua "Módulo em
- * desenvolvimento". A trava da tela é só aparência: quem garante é o banco
- * (RLS da tabela conciliacao_bancaria_noctus aceita apenas o usuário do Rocha).
+ * Acesso (03/11/2026): enquanto o módulo está em construção, só quem tem perfil de
+ * ADMINISTRADOR vê o conteúdo; o perfil "user" continua vendo "Módulo em
+ * desenvolvimento". A trava da tela é só aparência: quem garante é o banco (RLS da
+ * tabela conciliacao_bancaria_noctus: administrador, segundo noctus_eh_admin(), e só
+ * as próprias linhas de cada um).
  *
  * Dados: uma linha por conta + data; reimportar a mesma data substitui. É
  * gravado só o RESULTADO (totais, saldos e o resumo do SCK) — os lançamentos
@@ -27,8 +28,6 @@ const SB_URL = "https://wyyqjlwzphlhnplmirlg.supabase.co";
 const SB_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind5eXFqbHd6cGhsaG5wbG1pcmxnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQyMTU0MDcsImV4cCI6MjA5OTc5MTQwN30.8TEY_BZAm7P9vwuU0Eh5jzw6rgzcPOpTXk_gBU5FQJc";
 const CHAVE_SESSAO = "sipep.session";
 const TABELA = "conciliacao_bancaria_noctus";
-const ADMIN_USUARIO = "pedro rocha";
-const ADMIN_EMAIL = "pedro.rocha@momentum.com.br";
 const TAMANHO_MAXIMO = 10 * 1024 * 1024;   // 10 MB: os arquivos reais têm ~20 KB
 
 const MSG_FALHA_COMUNICACAO =
@@ -91,22 +90,24 @@ async function tokenServidor() {
   const s = sessaoAtual() || (await renovarSessao());
   return s?.accessToken || null;
 }
-/** O papel guardado no navegador diz que é o administrador principal? (só decide o que tentar) */
-function ehPrincipalNoNavegador() {
+/** O papel guardado no navegador é de administrador? (só decide o que tentar; quem decide é o servidor) */
+function ehAdminNoNavegador() {
   const u = sessaoGravada()?.user;
-  if (!u || !Array.isArray(u.roles) || !u.roles.includes("admin")) return false;
-  return [u.username, u.displayName, u.id].some((v) => String(v || "").trim().toLowerCase() === ADMIN_USUARIO);
+  return !!u && Array.isArray(u.roles) && u.roles.includes("admin");
 }
-/** Confirma no servidor quem é o dono do token: "sim", "nao" ou "falha" (sem comunicação). */
-async function principalConfirmado() {
+/** Pergunta ao servidor se o dono do token é administrador (mesma regra do resto do NOCTUS: noctus_eh_admin()). "sim", "nao" ou "falha" (sem comunicação). */
+async function adminConfirmado() {
   const token = await tokenServidor();
   if (!token) return "nao";
   try {
-    const r = await fetch(`${SB_URL}/auth/v1/user`, { headers: { apikey: SB_KEY, Authorization: `Bearer ${token}` } });
+    const r = await fetch(`${SB_URL}/rest/v1/rpc/noctus_eh_admin`, {
+      method: "POST",
+      headers: { apikey: SB_KEY, Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: "{}",
+    });
     if (r.status === 401 || r.status === 403) return "nao";
     if (!r.ok) return "falha";
-    const j = await r.json();
-    return String(j?.email || "").trim().toLowerCase() === ADMIN_EMAIL ? "sim" : "nao";
+    return (await r.json()) === true ? "sim" : "nao";
   } catch { return "falha"; }
 }
 async function servidor(caminho, opcoes = {}, tentouRenovar = false) {
@@ -628,8 +629,8 @@ function ligarTela() {
 
 /* ------------------------------------------------------------ início */
 (async function iniciar() {
-  if (!ehPrincipalNoNavegador()) return;            // os demais continuam vendo "em desenvolvimento"
-  const confirmado = await principalConfirmado();
+  if (!ehAdminNoNavegador()) return;                // perfil "user": continua vendo "em desenvolvimento"
+  const confirmado = await adminConfirmado();
   if (confirmado !== "sim") return;                 // "falha" também não abre: o servidor é quem decide
   $("em-desenvolvimento").classList.add("oculto");
   $("modulo").classList.remove("oculto");
