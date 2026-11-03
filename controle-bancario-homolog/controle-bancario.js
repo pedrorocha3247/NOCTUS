@@ -16,12 +16,16 @@
  * controle_bancario_debito_noctus e a tabela resumo compara Fluxo × Relatório
  * da mesma data (ver debito.js).
  *
+ * Exportar (03/11/2026): botão acima do selo de divergências gera o Excel da tabela resumo
+ * (exportar.js, aba Resumo e aba Conferência, com fórmulas); só com o relatório de débito importado.
+ *
  * Parte 3 (03/11/2026, modelo A): lançamentos que justificam a diferença Fluxo × Relatório
  * (Outros Bancos, Desconsiderados, Numerários e Compromissos), com sinal, painel de soma,
  * "Falta justificar" e detalhe por empresa. Exclusão é lógica (ver lancamentos.js e o banco).
  */
 import { lerFluxoCaixa, linhasDoExcel } from "./planilha.js";
 import { ehRelatorioDebito, lerDebito, montarResumo } from "./debito.js";
+import { gerarXlsxResumo, nomeArquivoResumo } from "./exportar.js";
 import { CATEGORIAS, NOME_CATEGORIA, contasDaEmpresa, validarLancamento, somarPorCategoria, faltaJustificar,
          porEmpresa, situacaoDaEmpresa } from "./lancamentos.js";
 
@@ -429,6 +433,26 @@ function desenhar() {
   desenharResumo(reg);
 }
 
+/** Exportar para Excel: gera o .xlsx da tabela resumo da data aberta (exportar.js) e baixa no navegador. */
+function exportarResumo() {
+  const reg = estado.atual && estado.datas.get(estado.atual);
+  const deb = reg && estado.debitos.get(reg.iso);
+  if (!reg || !deb) return;
+  try {
+    const res = montarResumo(reg.empresas || [], deb);
+    const bytes = gerarXlsxResumo({ iso: reg.iso, rotulo: rotuloIso(reg.iso), cols: res.cols, total: res.total, avisos: res.avisos,
+      arquivoFluxo: reg.arquivo, arquivoDebito: deb.arquivo });
+    const blob = new Blob([bytes], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = nomeArquivoResumo(reg.iso);
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+  } catch (e) {
+    $("resumo-aviso").insertAdjacentHTML("afterbegin", alerta("erro", esc(msgErro(e, "Não consegui gerar o Excel da tabela resumo"))));
+  }
+}
+
 /** Tabela resumo (modelo B): Fluxo × Relatório de débito da data aberta. */
 function desenharResumo(reg, colMinima = 0) {
   const cartao = $("cartao-resumo");
@@ -458,6 +482,12 @@ function desenharResumo(reg, colMinima = 0) {
     if (a.tipo === "semCodigo") avisos.push(alerta("", `${esc(a.empresa)} está no fluxo, mas não tem código de empresa cadastrado: não dá para comparar com o relatório.`));
   }
   $("resumo-aviso").innerHTML = avisos.join("");
+  // 03/11/2026: exportar para Excel só com o relatório de débito importado (sem ele a coluna Relatório ficaria vazia)
+  const btnExp = $("btn-exportar");   // defensivo: na publicação o JS pode ir ao ar antes do HTML
+  if (btnExp) {
+    btnExp.disabled = !deb;
+    btnExp.title = deb ? "Gerar um Excel com a tabela resumo desta data" : "Importe o relatório de débito para exportar";
+  }
 
   // Parte 3: lançamentos da data, painel e empresas disponíveis no formulário
   const lancsData = lancamentosDaData(reg.iso);
@@ -841,6 +871,7 @@ function ligarTela() {
   const ligar = (id, fn) => { const el = $(id); if (el) el.addEventListener("click", fn); };
   ligar("datas-ant", () => { estado.inicioDatas = Math.max(0, estado.inicioDatas - visiveis()); desenharDatasSemMudar(); });
   ligar("datas-prox", () => { estado.inicioDatas += visiveis(); desenharDatasSemMudar(); });
+  ligar("btn-exportar", exportarResumo);
   // Parte 3: lançamentos (defensivo: HTML antigo não tem o painel)
   if ($("btn-lanc")) {
     ligar("btn-lanc", () => abrirDialogo($("lanc-dialogo").classList.contains("oculto")));
