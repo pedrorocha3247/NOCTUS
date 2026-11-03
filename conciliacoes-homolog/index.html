@@ -122,6 +122,20 @@
       </div>
     </div>
   </section>
+
+  <!-- 5. Parte 2: planilha de importação dos PIX recebidos (layout do modelo do Rocha) -->
+  <section class="cartao cartao-importacao oculto" id="cartao-importacao" aria-labelledby="importacao-titulo">
+    <div class="quadro-topo">
+      <div>
+        <h2 id="importacao-titulo">Lançamentos para importação</h2>
+        <p class="quadro-conta" id="importacao-sub"></p>
+      </div>
+      <div class="comp-acoes">
+        <button type="button" class="botao-principal" id="btn-importacao">Gerar e Importar Lançamentos</button>
+      </div>
+    </div>
+    <div id="importacao-msg" class="importacao-msg" aria-live="polite"></div>
+  </section>
 </main>
 
 <script type="module" src="./conciliacoes.js"></script>
