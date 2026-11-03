@@ -17,7 +17,7 @@
  * da mesma data (ver debito.js).
  *
  * Exportar (03/11/2026): botão acima do selo de divergências gera o Excel da tabela resumo
- * (exportar.js, aba Resumo e aba Conferência, com fórmulas); só com o relatório de débito importado.
+ * (exportar.js: a tabela como está na tela, empresas nas colunas, com fórmulas); só com o relatório de débito importado.
  *
  * Parte 3 (03/11/2026, modelo A): lançamentos que justificam a diferença Fluxo × Relatório
  * (Outros Bancos, Desconsiderados, Numerários e Compromissos), com sinal, painel de soma,
@@ -440,7 +440,10 @@ function exportarResumo() {
   if (!reg || !deb) return;
   try {
     const res = montarResumo(reg.empresas || [], deb);
-    const bytes = gerarXlsxResumo({ iso: reg.iso, rotulo: rotuloIso(reg.iso), cols: res.cols, total: res.total, avisos: res.avisos,
+    // "NOME · n" no cabeçalho, igual à tela: quantidade de lançamentos de cada empresa na data
+    const lancPor = porEmpresa(lancamentosDaData(reg.iso));
+    const lanc = res.cols.map((c) => (c.codigo != null ? (lancPor.get(String(c.codigo)) || []).length : 0));
+    const bytes = gerarXlsxResumo({ iso: reg.iso, rotulo: rotuloIso(reg.iso), cols: res.cols, total: res.total, avisos: res.avisos, lanc,
       arquivoFluxo: reg.arquivo, arquivoDebito: deb.arquivo });
     const blob = new Blob([bytes], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
     const url = URL.createObjectURL(blob);
