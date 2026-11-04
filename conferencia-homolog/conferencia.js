@@ -11,6 +11,7 @@ import * as pdfjsLib from "../conferencia/vendor/pdf.min.mjs";
 import { parseRelatorio, parseRelatorioExcel } from "./parser.js";
 import { verificarPoder } from "./poderes.js";
 import { rotuloEmpresa } from "./contas.js";
+import { aplicarDuplicidades } from "./duplicidade.js";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc =
   new URL("../conferencia/vendor/pdf.worker.min.mjs", import.meta.url).href;
@@ -744,6 +745,9 @@ function calcularPoderes(meta, solicitacoes) {
     s.alerta10otn = s.valor > otn * LIMITE_OTN_UNICO
       ? "Solicitação ultrapassa a 10 OTN" : null;
   }
+  // Duplicidade de pagamento (mesmo favorecido + valor, na mesma empresa), além da de NF do parser.
+  // Recalculada a cada abertura/importação, então vale também para conferências já salvas.
+  aplicarDuplicidades(solicitacoes);
 }
 
 function recalcularPoderes() {
@@ -1723,7 +1727,7 @@ function ligarRevisao() {
 const APONTADAS = "@apontadas";   // valor de filtro que não colide com nome de forma de pagamento
 /** Apontamentos do parser + o de poder, que é recalculado quando o OTN muda. */
 const apontamentosLista = (s) =>
-  [...(s.alertas || []), ...(s.alertaPoder ? [s.alertaPoder] : []),
+  [...(s.alertasDuplicidade || []), ...(s.alertas || []), ...(s.alertaPoder ? [s.alertaPoder] : []),
    ...(s.alerta10otn ? [s.alerta10otn] : [])];
 
 /**
