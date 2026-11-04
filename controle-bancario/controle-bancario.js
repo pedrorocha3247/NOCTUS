@@ -836,7 +836,7 @@ async function aoClicarDetalhe(ev) {
     estado.confirmaExcluir = null;
     const reg = estado.atual && estado.datas.get(estado.atual);
     if (reg) desenharResumo(reg);
-    $("lanc-msg").innerHTML = alerta("ok", "Lançamento excluído. O registro continua guardado no banco como excluído.");
+    $("lanc-msg").innerHTML = alerta("ok", "Lançamento excluído.");
     if (msg) msg.replaceChildren();
   }
 }
