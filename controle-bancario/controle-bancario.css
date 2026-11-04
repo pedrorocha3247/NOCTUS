@@ -378,3 +378,5 @@ h2{font-size:.95rem;font-weight:700;margin:0 0 1rem;letter-spacing:-.01em}
 .lanc-item__acoes .lanc-mini--discreto{margin-top:0}
 .lanc-mini--icone{display:inline-flex;align-items:center;justify-content:center;width:34px;padding:0}
 .lanc-mini--icone:hover:not(:disabled){color:var(--color-text)}
+.lanc-mini--com-icone{display:inline-flex;align-items:center;gap:.4rem}
+.lanc-mini--com-icone svg{flex:none}
