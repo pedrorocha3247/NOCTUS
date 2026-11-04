@@ -759,7 +759,8 @@ function desenharDetalhe() {
           `<button type="button" class="lanc-mini lanc-mini--perigo" data-acao="excluir-sim" data-id="${l.id}">Sim, excluir</button>` +
           `<button type="button" class="lanc-mini" data-acao="excluir-nao">Cancelar</button></div>`
         : `<div class="lanc-item__acoes">` +
-          `<button type="button" class="lanc-mini lanc-mini--discreto lanc-mini--com-icone" data-acao="excluir" data-id="${l.id}">${ICONE_LIXEIRA}<span>Excluir</span></button>` +
+          `<button type="button" class="lanc-mini lanc-mini--discreto lanc-mini--icone" data-acao="excluir" data-id="${l.id}" ` +
+          `aria-label="Excluir lançamento" title="Excluir lançamento">${ICONE_LIXEIRA}</button>` +
           `<button type="button" class="lanc-mini lanc-mini--discreto lanc-mini--icone" data-acao="editar" data-id="${l.id}" ` +
           `aria-label="Editar lançamento" title="Editar lançamento">${ICONE_LAPIS}</button></div>`) +
       `</li>`;
@@ -946,7 +947,7 @@ async function enviarLancamento(ev) {
     const resumoLanc = `${esc(NOME_CATEGORIA[gravado.categoria])}, ${esc(moedaSinal(gravado.valor))} (${esc(gravado.empresa)})`;
     $("lanc-msg").innerHTML = falhaExcluir
       ? alerta("erro", esc(msgErro(falhaExcluir, "A alteração foi salva, mas não consegui excluir a versão anterior, que continua somando. Exclua-a manualmente")))
-      : alerta("ok", editando ? `Lançamento alterado: ${resumoLanc}. A versão anterior continua guardada no banco como excluída.` : `Lançamento salvo: ${resumoLanc}.`);
+      : alerta("ok", editando ? `Lançamento alterado: ${resumoLanc}.` : `Lançamento salvo: ${resumoLanc}.`);
   } catch (e) {
     $("lanc-form-msg").innerHTML = alerta("erro", esc(msgErro(e, "Não consegui salvar o lançamento")));
   } finally {
