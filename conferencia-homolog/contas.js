@@ -70,6 +70,11 @@ export const CONTAS_EMPRESA = [
   { empresa: "Momentum", aba: "MM", codigo: "15", banco: "Santander - 356", agencia: "3566", conta: "13000488-8", cnpj: "47.686.555/0001-00" },
   { empresa: "Momentum", aba: "MM", codigo: "15", banco: "Santander - 353", agencia: "2146", conta: "13000008-3", cnpj: "47.686.555/0001-00" },
   { empresa: "Momentum", aba: "MM", codigo: "15", banco: "Itaú - 341", agencia: "0262", conta: "62222-8", cnpj: "47.686.555/0001-00" },
+  // Incluída a pedido do Rocha em 04/11/2026 (apareceu no relatório como "MERCADOPAGO.COM REPRESENTACOES LTDA
+  // Ag. 0001 - C/C 67953790764", sem empresa identificada: R$ 246,90, "TRANSFERENCIA MEI MP X MEI ITAÚ"). O Rocha confirmou
+  // que é conta da Momentum. CNPJ repetido da matriz, como referência (o campo não entra na busca); o código de
+  // compensação do banco não veio no relatório e não foi cadastrado.
+  { empresa: "Momentum", aba: "MM", codigo: "15", banco: "Mercado Pago", agencia: "0001", conta: "67953790764", cnpj: "47.686.555/0001-00" },
   { empresa: "Instituto", aba: "IRM", codigo: "90", banco: "Itaú - 341", agencia: "0262", conta: "58703-3", cnpj: "05.161.107/0001-35" },
   // Incluída a pedido do Rocha em 14/10/2026 (apareceu no relatório como "BANCO DO BRASIL S/A
   // Ag. 6752 - C/C 13341-8", sem empresa identificada). CNPJ repetido da outra conta do IRM,
