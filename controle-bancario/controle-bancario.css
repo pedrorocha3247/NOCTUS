@@ -372,3 +372,9 @@ h2{font-size:.95rem;font-weight:700;margin:0 0 1rem;letter-spacing:-.01em}
   .tabela-valid thead th:first-child,.tabela-valid tbody th{padding-left:1.1rem}
   .tabela-valid thead th:last-child,.tabela-valid td:last-child{padding-right:1.1rem}
 }
+
+/* Editar lançamento (04/11/2026): botão com ícone de lápis ao lado de Excluir */
+.lanc-item__acoes{display:flex;align-items:center;gap:.5rem;margin-top:.5rem}
+.lanc-item__acoes .lanc-mini--discreto{margin-top:0}
+.lanc-mini--icone{display:inline-flex;align-items:center;justify-content:center;width:34px;padding:0}
+.lanc-mini--icone:hover:not(:disabled){color:var(--color-text)}
