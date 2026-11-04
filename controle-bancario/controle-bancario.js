@@ -67,6 +67,9 @@ function msgErro(e, oQueFalhou, padrao = MSG_FALHA_COMUNICACAO) {
 /* Toda mensagem leva o × para removê-la (regra do Rocha, 30/10/2026). O clique é tratado em ligarTela(). */
 const ICONE_X = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" ' +
   'stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>';
+/* Editar lançamento (04/11/2026, pedido do Rocha): botão com ícone de lápis ao lado de Excluir. */
+const ICONE_LAPIS = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" ' +
+  'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20l1-4L16.5 4.5a2.1 2.1 0 013 3L8 19l-4 1z"/><path d="M14 7l3 3"/></svg>';
 const alerta = (tipo, html) => `<div class="alerta ${tipo}" role="${tipo === "erro" ? "alert" : "status"}">` +
   `<span class="alerta__texto">${html}</span>` +
   `<button type="button" class="alerta__x" aria-label="Remover mensagem" title="Remover mensagem">${ICONE_X}</button></div>`;
@@ -161,6 +164,7 @@ const estado = {
   confirmaExcluir: null, // id do lançamento aguardando "Sim, excluir"
   dialogoIso: null,    // data a que o formulário aberto pertence
   salvandoLanc: false,
+  editandoId: null,    // id do lançamento em edição (o formulário está no modo "Editar lançamento")
   validacoes: new Map(), // Validação: "iso|chave" → { extrato, comprovantes, suprimento, baixa_compromisso }
   validFalha: false,     // true quando as validações não puderam ser lidas: nada fica verde e as caixas ficam travadas
   validAberta: false,    // a tabela de validação começa oculta (funcionalidade opcional)
@@ -751,7 +755,10 @@ function desenharDetalhe() {
         ? `<div class="lanc-item__confirma"><span>Excluir este lançamento?</span>` +
           `<button type="button" class="lanc-mini lanc-mini--perigo" data-acao="excluir-sim" data-id="${l.id}">Sim, excluir</button>` +
           `<button type="button" class="lanc-mini" data-acao="excluir-nao">Cancelar</button></div>`
-        : `<button type="button" class="lanc-mini lanc-mini--discreto" data-acao="excluir" data-id="${l.id}">Excluir</button>`) +
+        : `<div class="lanc-item__acoes">` +
+          `<button type="button" class="lanc-mini lanc-mini--discreto lanc-mini--icone" data-acao="editar" data-id="${l.id}" ` +
+          `aria-label="Editar lançamento" title="Editar lançamento">${ICONE_LAPIS}</button>` +
+          `<button type="button" class="lanc-mini lanc-mini--discreto" data-acao="excluir" data-id="${l.id}">Excluir</button></div>`) +
       `</li>`;
   }).join("");
   const antes = el.querySelector(".lanc-detalhe__msg")?.innerHTML || "";
@@ -801,6 +808,11 @@ async function aoClicarDetalhe(ev) {
   if (!b) return;
   const acao = b.dataset.acao;
   if (acao === "fechar") { fecharDetalhe(true); return; }
+  if (acao === "editar") {
+    const l = estado.lancamentos.find((x) => x.id === Number(b.dataset.id));
+    if (l) abrirDialogo(true, l);
+    return;
+  }
   if (acao === "excluir") { estado.confirmaExcluir = Number(b.dataset.id); desenharDetalhe(); return; }
   if (acao === "excluir-nao") { estado.confirmaExcluir = null; desenharDetalhe(); return; }
   if (acao === "excluir-sim") {
@@ -846,14 +858,17 @@ function atualizarBancos() {
   sel.disabled = !contas.length;
   $("erro-banco").textContent = cod && !contas.length ? "Esta empresa não tem conta bancária cadastrada no NOCTUS." : "";
 }
-function abrirDialogo(abrir) {
+function abrirDialogo(abrir, editar = null) {
   const dlg = $("lanc-dialogo"), fundo = $("lanc-fundo"), btn = $("btn-lanc");
   if (!dlg) return;
   if (abrir) {
     const reg = estado.atual && estado.datas.get(estado.atual);
     if (!reg || estado.lancFalha) return;
     fecharDetalhe();
-    estado.dialogoIso = reg.iso;
+    estado.dialogoIso = editar ? editar.data_relatorio : reg.iso;
+    estado.editandoId = editar ? editar.id : null;
+    $("lanc-dialogo-titulo").textContent = editar ? "Editar lançamento" : "Novo lançamento";
+    $("lanc-salvar").textContent = editar ? "Salvar alterações" : "Salvar lançamento";
     $("lanc-categoria").innerHTML = CATEGORIAS.map((c) => `<option value="${c.id}">${esc(c.nome)}</option>`).join("");
     $("lanc-empresa").innerHTML = estado.empresasResumo.map((c) => `<option value="${esc(c.codigo)}">${esc(c.empresa)}</option>`).join("");
     // empresa sugerida: a primeira que ainda tem diferença a justificar
@@ -862,11 +877,23 @@ function abrirDialogo(abrir) {
       situacaoDaEmpresa(c.diferenca, lancPor.get(c.codigo) || []).falta !== 0);
     $("lanc-empresa").value = (pendente || estado.empresasResumo[0])?.codigo ?? "";
     $("lanc-valor").value = ""; $("lanc-descricao").value = "";
+    if (editar) {   // formulário preenchido com o lançamento escolhido
+      $("lanc-categoria").value = editar.categoria;
+      $("lanc-empresa").value = editar.empresa_codigo;
+      $("lanc-valor").value = (editar.valor < 0 ? "-" : "") + moeda(Math.abs(editar.valor));
+      $("lanc-descricao").value = editar.descricao;
+    }
     limparErrosLanc();
     atualizarBancos();
+    if (editar && editar.banco) $("lanc-banco").value = editar.banco;
     if (!estado.empresasResumo.length) {
       $("lanc-form-msg").innerHTML = alerta("erro", "Não há empresa com código cadastrado nesta data para receber lançamento.");
     }
+  }
+  if (!abrir) {   // ao fechar, o formulário volta ao modo "Novo lançamento"
+    estado.editandoId = null;
+    $("lanc-dialogo-titulo").textContent = "Novo lançamento";
+    $("lanc-salvar").textContent = "Salvar lançamento";
   }
   dlg.classList.toggle("oculto", !abrir);
   fundo.classList.toggle("oculto", !abrir);
@@ -882,6 +909,7 @@ async function enviarLancamento(ev) {
   if (estado.salvandoLanc) return;
   limparErrosLanc();
   const iso = estado.dialogoIso;
+  const editando = estado.editandoId != null ? estado.lancamentos.find((l) => l.id === estado.editandoId) || null : null;
   const r = validarLancamento({
     categoria: $("lanc-categoria").value, valorTexto: $("lanc-valor").value, empresaCodigo: $("lanc-empresa").value,
     empresas: estado.empresasResumo, banco: $("lanc-banco").value, descricao: $("lanc-descricao").value,
@@ -899,16 +927,28 @@ async function enviarLancamento(ev) {
   try {
     const gravado = await salvarLancamento(r.lancamento, iso);
     estado.lancamentos.push(gravado);
+    // Editar = grava a versão nova e só depois exclui (logicamente) a anterior: o histórico fica no banco e nenhuma
+    // regra do banco que proíbe alterar valor foi afrouxada. Se a exclusão falhar, a tela avisa (a anterior continua contando).
+    let falhaExcluir = null;
+    if (editando) {
+      try {
+        await excluirLancamento(editando.id);
+        estado.lancamentos = estado.lancamentos.filter((l) => l.id !== editando.id);
+      } catch (e2) { falhaExcluir = e2; }
+    }
     abrirDialogo(false);
     $("btn-lanc").focus();
     const reg = estado.atual && estado.datas.get(estado.atual);
     if (reg) desenharResumo(reg);
-    $("lanc-msg").innerHTML = alerta("ok", `Lançamento salvo: ${esc(NOME_CATEGORIA[gravado.categoria])}, ${esc(moedaSinal(gravado.valor))} (${esc(gravado.empresa)}).`);
+    const resumoLanc = `${esc(NOME_CATEGORIA[gravado.categoria])}, ${esc(moedaSinal(gravado.valor))} (${esc(gravado.empresa)})`;
+    $("lanc-msg").innerHTML = falhaExcluir
+      ? alerta("erro", esc(msgErro(falhaExcluir, "A alteração foi salva, mas não consegui excluir a versão anterior, que continua somando. Exclua-a manualmente")))
+      : alerta("ok", editando ? `Lançamento alterado: ${resumoLanc}. A versão anterior continua guardada no banco como excluída.` : `Lançamento salvo: ${resumoLanc}.`);
   } catch (e) {
     $("lanc-form-msg").innerHTML = alerta("erro", esc(msgErro(e, "Não consegui salvar o lançamento")));
   } finally {
     estado.salvandoLanc = false;
-    salvar.disabled = false; salvar.textContent = "Salvar lançamento";
+    salvar.disabled = false; salvar.textContent = estado.editandoId != null ? "Salvar alterações" : "Salvar lançamento";
   }
 }
 
