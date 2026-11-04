@@ -70,6 +70,9 @@ const ICONE_X = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" str
 /* Editar lançamento (04/11/2026, pedido do Rocha): botão com ícone de lápis ao lado de Excluir. */
 const ICONE_LAPIS = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" ' +
   'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20l1-4L16.5 4.5a2.1 2.1 0 013 3L8 19l-4 1z"/><path d="M14 7l3 3"/></svg>';
+/* Ícone de lixeira do botão Excluir (04/11/2026). */
+const ICONE_LIXEIRA = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" ' +
+  'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16"/><path d="M9 7V4.5h6V7"/><path d="M6.5 7l1 13h9l1-13"/><path d="M10 11v5"/><path d="M14 11v5"/></svg>';
 const alerta = (tipo, html) => `<div class="alerta ${tipo}" role="${tipo === "erro" ? "alert" : "status"}">` +
   `<span class="alerta__texto">${html}</span>` +
   `<button type="button" class="alerta__x" aria-label="Remover mensagem" title="Remover mensagem">${ICONE_X}</button></div>`;
@@ -756,9 +759,9 @@ function desenharDetalhe() {
           `<button type="button" class="lanc-mini lanc-mini--perigo" data-acao="excluir-sim" data-id="${l.id}">Sim, excluir</button>` +
           `<button type="button" class="lanc-mini" data-acao="excluir-nao">Cancelar</button></div>`
         : `<div class="lanc-item__acoes">` +
+          `<button type="button" class="lanc-mini lanc-mini--discreto lanc-mini--com-icone" data-acao="excluir" data-id="${l.id}">${ICONE_LIXEIRA}<span>Excluir</span></button>` +
           `<button type="button" class="lanc-mini lanc-mini--discreto lanc-mini--icone" data-acao="editar" data-id="${l.id}" ` +
-          `aria-label="Editar lançamento" title="Editar lançamento">${ICONE_LAPIS}</button>` +
-          `<button type="button" class="lanc-mini lanc-mini--discreto" data-acao="excluir" data-id="${l.id}">Excluir</button></div>`) +
+          `aria-label="Editar lançamento" title="Editar lançamento">${ICONE_LAPIS}</button></div>`) +
       `</li>`;
   }).join("");
   const antes = el.querySelector(".lanc-detalhe__msg")?.innerHTML || "";
