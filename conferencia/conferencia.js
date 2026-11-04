@@ -1741,6 +1741,12 @@ const apontamentosVisiveis = (s) =>
 const temApontamento = (s) => apontamentosVisiveis(s).length > 0;
 const apontamentosDe = (s) => apontamentosVisiveis(s).join(" · ");
 /**
+ * Apontamento de DUPLICIDADE (duplicidade.js) aparece só na tela (cartão e revisão): a planilha do Excel não o leva
+ * (pedido do Rocha, 04/11/2026). Os demais apontamentos continuam indo para a planilha como antes.
+ */
+const apontamentosParaExcel = (s) =>
+  apontamentosVisiveis(s).filter((a) => !(s.alertasDuplicidade || []).includes(a)).join(" · ");
+/**
  * true se o sistema já gerou algum apontamento pra esta solicitação, mesmo
  * que o conferente tenha removido todos depois. Usado só no filtro "com
  * apontamento" do resumo, pra ainda ser possível localizar essas solicitações
@@ -2511,7 +2517,7 @@ function abaSolicitacoes(wb, nome, itens, comTipo) {
     ws.addRow({
       sn: s.sn, tipo: s.tipo, solicitante: s.solicitante, competente: s.competente,
       valor: s.valor, favorecido: s.favorecido, destinacao: s.destinacao,
-      apontamentos: apontamentosDe(s),
+      apontamentos: apontamentosParaExcel(s),
       status: statusNaPlanilha(s.sn), parecer: parecerDe(s.sn),
     });
   }
@@ -2520,7 +2526,7 @@ function abaSolicitacoes(wb, nome, itens, comTipo) {
   const w = (k, min, max) => largura(itens.map((s) => ({
     sn: s.sn, tipo: s.tipo, solicitante: s.solicitante, competente: s.competente,
     valor: moeda(s.valor), favorecido: s.favorecido,
-    destinacao: s.destinacao, apontamentos: apontamentosDe(s),
+    destinacao: s.destinacao, apontamentos: apontamentosParaExcel(s),
     status: statusNaPlanilha(s.sn), parecer: parecerDe(s.sn),
   }[k])).concat(colunas.find((c) => c.key === k).header), min, max);
 
@@ -2593,7 +2599,7 @@ function abaResumo(wb) {
 
   // quantas solicitações o próprio sistema marcou — evidência de que a
   // verificação automática rodou, e quanto ela achou
-  const comApontamento = estado.itens.filter(temApontamento).length;
+  const comApontamento = estado.itens.filter((s) => apontamentosParaExcel(s)).length;
   ws.getCell("A4").value = comApontamento
     ? `${comApontamento} solicitação(ões) com apontamento automático — ver coluna "Apontamentos"`
     : "Nenhum apontamento automático neste lote";
@@ -2771,7 +2777,7 @@ async function consolidarLotes(somenteData) {
         data: l.data, empresa: empresaLinha, sn: s.sn, tipo: s.tipo,
         solicitante: s.solicitante, competente: s.competente, valor: s.valor,
         favorecido: s.favorecido, destinacao: s.destinacao,
-        apontamentos: apontamentosDe(s),
+        apontamentos: apontamentosParaExcel(s),
         status: p.status || "Sem conferir", parecer: p.parecer || "",
       });
     }
