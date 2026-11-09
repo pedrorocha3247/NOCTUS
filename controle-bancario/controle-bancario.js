@@ -22,12 +22,21 @@
  * Parte 3 (03/11/2026, modelo A): lançamentos que justificam a diferença Fluxo × Relatório
  * (Outros Bancos, Desconsiderados, Numerários e Compromissos), com sinal, painel de soma,
  * "Falta justificar" e detalhe por empresa. Exclusão é lógica (ver lancamentos.js e o banco).
+ *
+ * Abas (09/11/2026, pedido do Rocha): "Fluxo de Caixa" (a tela de sempre) e "Saldo do Dia" (modelo M4): as mesmas empresas e
+ * bancos da planilha de referência, sempre, com o saldo atual digitado à mão e guardado por DATA + linha (saldo.js,
+ * controle_bancario_saldo_noctus). Dia novo = campos vazios; voltar a uma data recupera os valores.
+ *
+ * Diferença da tabela resumo (09/11/2026): NA TELA, a linha Diferença (e o total do topo) mostra o que AINDA FALTA justificar de
+ * cada empresa (diferença − lançamentos da empresa); justificado por completo vira "-" verde. O Excel exportado NÃO muda: continua
+ * trazendo a diferença original Fluxo − Relatório (exportarResumo usa montarResumo, sem o desconto dos lançamentos).
  */
 import { lerFluxoCaixa, linhasDoExcel } from "./planilha.js";
 import { ehRelatorioDebito, lerDebito, montarResumo } from "./debito.js";
 import { gerarXlsxResumo, nomeArquivoResumo } from "./exportar.js";
 import { CATEGORIAS, NOME_CATEGORIA, contasDaEmpresa, validarLancamento, somarPorCategoria, faltaJustificar,
          porEmpresa, situacaoDaEmpresa } from "./lancamentos.js";
+import { LINHAS_SALDO, IDS_SALDO, lerSaldo, formatarSaldo, somarSaldos, linhaCasaComBusca } from "./saldo.js";
 
 const SB_URL = "https://wyyqjlwzphlhnplmirlg.supabase.co";
 const SB_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind5eXFqbHd6cGhsaG5wbG1pcmxnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQyMTU0MDcsImV4cCI6MjA5OTc5MTQwN30.8TEY_BZAm7P9vwuU0Eh5jzw6rgzcPOpTXk_gBU5FQJc";
@@ -36,6 +45,7 @@ const TABELA = "controle_bancario_noctus";
 const TABELA_DEBITO = "controle_bancario_debito_noctus";
 const TABELA_LANC = "controle_bancario_lancamentos_noctus";
 const TABELA_VALID = "controle_bancario_validacao_noctus";   // 03/11/2026: checklist opcional de validação por data e empresa
+const TABELA_SALDO = "controle_bancario_saldo_noctus";       // 09/11/2026: saldo do dia por data e linha (empresa/banco)
 const TAMANHO_MAXIMO = 10 * 1024 * 1024;   // 10 MB: o relatório real tem ~10 KB
 
 const MSG_FALHA_COMUNICACAO =
@@ -171,6 +181,12 @@ const estado = {
   validacoes: new Map(), // Validação: "iso|chave" → { extrato, comprovantes, suprimento, baixa_compromisso }
   validFalha: false,     // true quando as validações não puderam ser lidas: nada fica verde e as caixas ficam travadas
   validAberta: false,    // a tabela de validação começa oculta (funcionalidade opcional)
+  aba: "fluxo",          // aba aberta: "fluxo" (Fluxo de Caixa) ou "saldo" (Saldo do Dia)
+  saldos: new Map(),     // Saldo do Dia: "iso|L01" → número (ou null = campo vazio)
+  saldoFalha: false,     // true quando os saldos não puderam ser lidos: os campos ficam travados e nada é mostrado como salvo
+  saldoGravando: new Map(), // "iso|L01" → quantas gravações dessa linha ainda estão a caminho
+  saldoBusca: "",        // texto da busca da lista
+  saldoSoVazios: false,  // mostrar só as linhas sem saldo
 };
 
 async function carregarSalvos() {
@@ -336,6 +352,162 @@ function atualizarValidacao(iso) {
   if (!reg || reg.iso !== iso) return;
   const deb = estado.debitos.get(reg.iso) || null;
   desenharValidacao(reg, montarResumo(reg.empresas || [], deb));
+}
+
+/* ------------------------------------------------------------ Saldo do Dia (modelo M4, 09/11/2026) */
+const chaveSaldo = (iso, id) => `${iso}|${id}`;
+const saldoDe = (iso, id) => estado.saldos.get(chaveSaldo(iso, id)) ?? null;
+const linhaSaldo = (id) => LINHAS_SALDO.find((l) => l.id === id);
+
+/** Lê todos os saldos do usuário em páginas (nunca corta em silêncio). */
+async function carregarSaldos() {
+  const PAGINA = 1000, MAX_PAGINAS = 50;
+  const lidas = [];
+  for (let p = 0; p < MAX_PAGINAS; p++) {
+    const r = await servidor(`${TABELA_SALDO}?select=data_relatorio,linha,saldo&order=id.asc&limit=${PAGINA}&offset=${p * PAGINA}`);
+    const linhas = await r.json();
+    if (!Array.isArray(linhas)) throw new Error("saldo: resposta inesperada do servidor");
+    lidas.push(...linhas);
+    if (linhas.length < PAGINA) {
+      estado.saldos.clear();
+      for (const l of lidas) estado.saldos.set(chaveSaldo(l.data_relatorio, l.linha), l.saldo == null ? null : Number(l.saldo));
+      estado.saldoFalha = false;
+      return;
+    }
+  }
+  throw new Error("saldo: leitura incompleta");
+}
+
+/** Grava (upsert) o saldo de uma linha numa data. Valor nulo = campo esvaziado (não existe DELETE pela API). */
+async function gravarSaldo(iso, id, valor) {
+  const token = await tokenServidor();
+  const uid = token && idDoToken(token);
+  if (!uid) throw new Error("sem-login");
+  const r = await servidor(`${TABELA_SALDO}?on_conflict=auth_user_id,data_relatorio,linha`, {
+    method: "POST",
+    headers: { Prefer: "resolution=merge-duplicates,return=representation" },
+    body: JSON.stringify([{ auth_user_id: uid, data_relatorio: iso, linha: id, saldo: valor }]),
+  });
+  const linhas = await r.json();
+  if (!Array.isArray(linhas) || linhas.length !== 1) throw new Error("saldo: servidor não confirmou a gravação");
+}
+
+const filaSaldo = new Map();   // "iso|linha" → promessa: as gravações da mesma linha saem uma depois da outra
+/** Define o saldo: a tela muda na hora; a gravação vai ao servidor em seguida, em ordem, sempre com o valor mais recente. */
+function definirSaldo(iso, id, valor) {
+  const k = chaveSaldo(iso, id);
+  estado.saldos.set(k, valor);
+  estado.saldoGravando.set(k, (estado.saldoGravando.get(k) || 0) + 1);
+  atualizarLinhaSaldo(iso, id);
+  atualizarResumoSaldo(iso);
+  const terminou = () => {
+    const n = (estado.saldoGravando.get(k) || 1) - 1;
+    if (n <= 0) estado.saldoGravando.delete(k); else estado.saldoGravando.set(k, n);
+    atualizarLinhaSaldo(iso, id);
+  };
+  const p = (filaSaldo.get(k) || Promise.resolve()).then(() => gravarSaldo(iso, id, estado.saldos.get(k) ?? null)).then(terminou, async (e) => {
+    const l = linhaSaldo(id);
+    const msg = $("saldo-msg");
+    if (msg) msg.insertAdjacentHTML("afterbegin", alerta("erro", esc(msgErro(e, `Não consegui gravar o saldo de ${l.empresa} (${l.banco}${l.conta ? ` ${l.conta}` : ""})`))));
+    estado.saldoGravando.delete(k);
+    // volta ao que o servidor realmente tem, para a tela não mostrar um saldo que não foi salvo
+    try { await carregarSaldos(); } catch { estado.saldoFalha = true; }
+    desenharSaldo();
+  });
+  filaSaldo.set(k, p);
+}
+
+function htmlLinhaSaldo(l, iso) {
+  const v = saldoDe(iso, l.id), k = chaveSaldo(iso, l.id);
+  const rot = `Saldo atual ${l.empresa} ${l.banco} ${l.conta || "sem conta"}`;
+  return `<div class="saldo-item" role="listitem" data-linha="${l.id}">` +
+    `<span class="saldo-empresa">${esc(l.empresa)}</span>` +
+    `<span class="saldo-banco"><span>${esc(l.banco)}</span>${l.conta ? `<span class="saldo-conta">${esc(l.conta)}</span>` : '<span class="saldo-sem-conta">sem conta</span>'}</span>` +
+    `<label class="saldo-campo"><span>R$</span><input type="text" class="saldo-input${v != null && v < 0 ? " neg" : ""}" inputmode="decimal" autocomplete="off" ` +
+    `placeholder="—" data-linha="${l.id}" data-iso="${esc(iso)}" value="${esc(formatarSaldo(v))}" aria-label="${esc(rot)}"${estado.saldoFalha ? " disabled" : ""}></label>` +
+    `<span class="saldo-ponto${estado.saldoGravando.has(k) ? " gravando" : v != null ? " on" : ""}" ` +
+    `title="${estado.saldoGravando.has(k) ? "Salvando…" : v != null ? "Preenchido" : "Falta preencher"}"></span></div>`;
+}
+
+/** Atualiza só o ponto e a cor do campo de uma linha (sem refazer a lista: não tira o foco de quem está digitando). */
+function atualizarLinhaSaldo(iso, id) {
+  if (estado.atual !== iso) return;
+  const item = document.querySelector(`#saldo-lista .saldo-item[data-linha="${id}"]`);
+  if (!item) return;
+  const v = saldoDe(iso, id), k = chaveSaldo(iso, id), gravando = estado.saldoGravando.has(k);
+  const ponto = item.querySelector(".saldo-ponto");
+  ponto.className = `saldo-ponto${gravando ? " gravando" : v != null ? " on" : ""}`;
+  ponto.title = gravando ? "Salvando…" : v != null ? "Preenchido" : "Falta preencher";
+  item.querySelector(".saldo-input").classList.toggle("neg", v != null && v < 0);
+}
+
+function atualizarResumoSaldo(iso) {
+  const { total, preenchidos } = somarSaldos(IDS_SALDO.map((id) => saldoDe(iso, id)));
+  $("saldo-total").textContent = estado.saldoFalha ? "—" : `R$ ${moeda(total)}`;
+  $("saldo-contagem").textContent = estado.saldoFalha ? "Saldos indisponíveis" : `${preenchidos} de ${LINHAS_SALDO.length} preenchidos`;
+}
+
+function desenharListaSaldo(iso) {
+  const lista = $("saldo-lista");
+  const linhas = LINHAS_SALDO.filter((l) => linhaCasaComBusca(l, estado.saldoBusca) && (!estado.saldoSoVazios || saldoDe(iso, l.id) == null));
+  lista.innerHTML = linhas.length ? linhas.map((l) => htmlLinhaSaldo(l, iso)).join("")
+    : `<div class="saldo-vazio-lista">${estado.saldoBusca.trim() ? "Nenhuma conta encontrada para esta busca." : "Todos os saldos deste dia estão preenchidos."}</div>`;
+}
+
+function desenharSaldo() {
+  if (!$("aba-saldo")) return;   // defensivo: na publicação o JS vai ao ar antes do HTML
+  const reg = estado.atual && estado.datas.get(estado.atual);
+  const iso = reg ? reg.iso : null;
+  $("saldo-sem-dia").classList.toggle("oculto", !!iso);
+  $("saldo-corpo").classList.toggle("oculto", !iso);
+  if (!iso) {
+    $("saldo-titulo").textContent = "Saldo do dia";
+    $("saldo-total").textContent = ""; $("saldo-contagem").textContent = ""; $("saldo-info").textContent = "";
+    $("saldo-datas-nav").classList.add("oculto");
+    return;
+  }
+  $("saldo-titulo").textContent = `Saldo em ${rotuloIso(iso)}`;
+  $("saldo-info").textContent = `Fluxo importado neste dia: ${plural((reg.empresas || []).length, "empresa", "empresas")}. ` +
+    `Aqui aparecem sempre as ${new Set(LINHAS_SALDO.map((l) => l.empresa)).size} empresas e as ${LINHAS_SALDO.length} contas da planilha de referência.`;
+  // faixa de datas: a mesma janela da aba Fluxo de Caixa (no máximo 5 por vez, 3 no celular)
+  const isos = [...estado.datas.keys()].sort();
+  const nav = $("saldo-datas-nav");
+  if (isos.length > 1) {
+    nav.classList.remove("oculto");
+    const maxInicio = Math.max(0, isos.length - visiveis());
+    const pos = isos.indexOf(iso);
+    let ini = Math.min(Math.max(0, estado.inicioDatas), maxInicio);
+    if (pos >= 0 && (pos < ini || pos >= ini + visiveis())) ini = Math.min(maxInicio, Math.max(0, pos - visiveis() + 1));
+    estado.inicioDatas = ini;
+    $("saldo-datas").innerHTML = isos.slice(ini, ini + visiveis()).map(botaoData).join("");
+    $("saldo-ant").disabled = ini === 0; $("saldo-ant").classList.toggle("oculto", isos.length <= visiveis());
+    $("saldo-prox").disabled = ini >= maxInicio; $("saldo-prox").classList.toggle("oculto", isos.length <= visiveis());
+  } else {
+    nav.classList.add("oculto");
+    $("saldo-datas").innerHTML = "";
+  }
+  atualizarResumoSaldo(iso);
+  desenharListaSaldo(iso);
+}
+
+/** Troca de aba. Ao voltar para o Fluxo de Caixa a tela é redesenhada (as medidas das colunas só valem com a aba visível). */
+function trocarAba(nome) {
+  if (!$("aba-saldo") || (nome !== "fluxo" && nome !== "saldo")) return;
+  estado.aba = nome;
+  const saldo = nome === "saldo";
+  $("aba-fluxo").classList.toggle("oculto", saldo);
+  $("aba-saldo").classList.toggle("oculto", !saldo);
+  for (const [id, ativa] of [["aba-btn-fluxo", !saldo], ["aba-btn-saldo", saldo]]) {
+    $(id).setAttribute("aria-selected", String(ativa));
+    $(id).tabIndex = ativa ? 0 : -1;
+  }
+  if (saldo) {
+    if ($("lanc-dialogo")) abrirDialogo(false);
+    fecharDetalhe();
+    desenharSaldo();
+  } else {
+    desenhar();
+  }
 }
 
 async function salvarDebito(deb, arquivo) {
@@ -506,6 +678,7 @@ function desenhar() {
     $("cartao-resumo")?.classList.add("oculto");
     $("validacao")?.classList.add("oculto");
     $("painel-lanc")?.classList.add("oculto");
+    desenharSaldo();
     return;
   }
   cartao.classList.remove("oculto");
@@ -548,7 +721,9 @@ function desenhar() {
   $("tabela-corpo").innerHTML = empresas.length
     ? empresas.map((e) => `<tr><td>${esc(e.empresa)}</td><td class="saidas">${esc(moeda(e.saidas))}</td></tr>`).join("")
     : `<tr><td colspan="2" class="vazio">Nenhuma empresa com saída em ${esc(rotuloIso(reg.iso))}.</td></tr>`;
-  desenharResumo(reg);
+  // as medidas da tabela resumo só valem com a aba Fluxo de Caixa visível; ao voltar para ela, trocarAba() redesenha
+  if (estado.aba === "fluxo") desenharResumo(reg);
+  desenharSaldo();
 }
 
 /** Exportar para Excel: gera o .xlsx da tabela resumo da data aberta (exportar.js) e baixa no navegador. */
@@ -584,14 +759,37 @@ function desenharResumo(reg, colMinima = 0) {
   const sinal = (v) => (v == null || v === 0 ? "" : v > 0 ? "pos" : "neg");
   const dica = (v) => (v > 0 ? "Fluxo maior que o relatório de débito" : v < 0 ? "Relatório de débito maior que o fluxo" : "");
 
+  // 09/11/2026 (pedido do Rocha): NA TELA a linha Diferença mostra o que AINDA FALTA justificar de cada empresa
+  // (diferença − lançamentos da empresa). Justificou tudo: zera ("-" verde). O Excel exportado usa res.cols (sem este desconto)
+  // e continua apontando a diferença original. Sem leitura confiável dos lançamentos, a tela mostra a diferença original.
+  const lancsData = lancamentosDaData(reg.iso);
+  const lancPorEmpresa = porEmpresa(lancsData);
+  const nLanc = (c) => (c.codigo != null ? (lancPorEmpresa.get(String(c.codigo)) || []).length : 0);
+  const colsTela = res.cols.map((c) => {
+    if (c.diferenca == null) return { ...c, difTela: null };
+    if (estado.lancFalha || c.codigo == null || c.codigo === "") return { ...c, difTela: c.diferenca };
+    return { ...c, difTela: situacaoDaEmpresa(c.diferenca, lancPorEmpresa.get(String(c.codigo)) || []).falta };
+  });
+  const emCentavos = (v) => Math.round(Number(v) * 100);
+  const totalTela = colsTela.reduce((s, c) => s + (c.difTela == null ? 0 : emCentavos(c.difTela)), 0) / 100;
+  const divergenciasTela = colsTela.filter((c) => c.difTela != null && emCentavos(c.difTela) !== 0).length;
+  const dicaTela = (c) => {
+    if (c.difTela != null && nLanc(c) && c.difTela !== c.diferenca) {
+      return emCentavos(c.difTela) === 0
+        ? `Diferença de R$ ${moeda(c.diferenca)} justificada pelos lançamentos`
+        : `Diferença original R$ ${moeda(c.diferenca)}; ainda falta justificar R$ ${moeda(c.difTela)}`;
+    }
+    return dica(c.difTela);
+  };
+
   $("resumo-titulo").textContent = `Fluxo em ${rotuloIso(reg.iso)}`;
   $("resumo-fluxo").textContent = `R$ ${moeda(res.total.fluxo)}`;
   $("resumo-relatorio").textContent = deb ? `R$ ${moeda(res.total.relatorio)}` : "—";
   const dif = $("resumo-diferenca");
-  dif.textContent = deb ? `R$ ${moeda(res.total.diferenca)}` : "—";
-  dif.className = `kpi-val ${sinal(res.total.diferenca)}`;
+  dif.textContent = deb ? `R$ ${moeda(totalTela)}` : "—";
+  dif.className = `kpi-val ${sinal(deb ? totalTela : null)}`;
   $("resumo-situacao").textContent = !deb ? "Aguardando o relatório de débito"
-    : res.divergencias ? plural(res.divergencias, "divergência", "divergências") : "Sem divergência";
+    : divergenciasTela ? plural(divergenciasTela, "divergência", "divergências") : "Sem divergência";
 
   const avisos = [];
   if (!deb) avisos.push(alerta("", `Importe o relatório de débito em conta de ${esc(rotuloIso(reg.iso))} para preencher a linha Relatório.`));
@@ -611,16 +809,13 @@ function desenharResumo(reg, colMinima = 0) {
   }
 
   // Parte 3: lançamentos da data, painel e empresas disponíveis no formulário
-  const lancsData = lancamentosDaData(reg.iso);
-  const lancPorEmpresa = porEmpresa(lancsData);
   estado.empresasResumo = res.cols.filter((c) => c.codigo != null && c.codigo !== "").map((c) => ({ codigo: String(c.codigo), empresa: c.empresa, diferenca: c.diferenca }));
   desenharPainel(reg, res, deb, lancsData);
   desenharValidacao(reg, res);
-  const nLanc = (c) => (c.codigo != null ? (lancPorEmpresa.get(String(c.codigo)) || []).length : 0);
 
   // 30/10: todas as empresas à vista, sem rolagem: o quadro cresce até a largura da tela e,
   // se ainda não couber, as empresas quebram em faixas (cada faixa com Fluxo/Relatório/Diferença).
-  const cols = res.cols;
+  const cols = colsTela;
   const celular = ehCelular();
   // largura da coluna pelo maior conteúdo (nome ou valor), medida com a fonte da tabela: nada fica espremido nem cortado
   const medir = (() => { const cv = document.createElement("canvas").getContext("2d");
@@ -631,7 +826,7 @@ function desenharResumo(reg, colMinima = 0) {
     medir((String(c.empresa) + (nLanc(c) ? ` · ${nLanc(c)}` : "")).toUpperCase(), 700, base * 0.72) * 1.06,     // cabeçalho em maiúsculas com espaçamento (e " · n" dos lançamentos)
     ...[c.fluxo, c.relatorio].filter((v) => v != null).map((v) => medir(contabil(v), 700, base * (celular ? 0.86 : 0.88))),
     // a diferença vai dentro do selo colorido: soma a folga interna do selo (.45rem de cada lado)
-    ...[c.diferenca].filter((v) => v != null).map((v) => medir(contabil(v), 700, base * (celular ? 0.86 : 0.88)) + base * 0.9)), 0);
+    ...[c.difTela].filter((v) => v != null).map((v) => medir(contabil(v), 700, base * (celular ? 0.86 : 0.88)) + base * 0.9)), 0);
   // + folga da célula (.75rem de cada lado) + margem de segurança para a fonte
   const ROTULO = celular ? 96 : 120, COL = Math.max(celular ? 96 : 104, Math.ceil(maior + base * 1.5 + 12), colMinima), SOBRA = 24;
   const pai = cartao.parentElement.clientWidth - (parseFloat(getComputedStyle(cartao.parentElement).paddingLeft) || 0)
@@ -664,8 +859,8 @@ function desenharResumo(reg, colMinima = 0) {
       `<thead><tr><th scope="col">Empresa</th>${cab}</tr></thead><tbody>` +
       linha("Fluxo", "fluxo", (c) => `<td${atr(c)}>${esc(contabil(c.fluxo))}</td>`) +
       linha("Relatório", "relatorio", (c) => `<td${atr(c)}>${c.relatorio == null ? "—" : esc(contabil(c.relatorio))}</td>`) +
-      linha("Diferença", "diferenca", (c) => c.diferenca == null ? "<td>—</td>"
-        : `<td><span class="dif ${sinal(c.diferenca) || "zero"}"${dica(c.diferenca) ? ` title="${dica(c.diferenca)}"` : ""}>${esc(contabil(c.diferenca))}</span></td>`) +
+      linha("Diferença", "diferenca", (c) => c.difTela == null ? "<td>—</td>"
+        : `<td><span class="dif ${sinal(c.difTela) || "zero"}"${dicaTela(c) ? ` title="${esc(dicaTela(c))}"` : ""}>${esc(contabil(c.difTela))}</span></td>`) +
       "</tbody></table>";
   };
   const grupos = [];
@@ -960,7 +1155,7 @@ async function enviarLancamento(ev) {
 let refazerResumo = null;
 function aoRedimensionar() {
   clearTimeout(refazerResumo);
-  refazerResumo = setTimeout(() => { const reg = estado.atual && estado.datas.get(estado.atual); if (reg) desenharResumo(reg); }, 120);
+  refazerResumo = setTimeout(() => { const reg = estado.atual && estado.datas.get(estado.atual); if (reg && estado.aba === "fluxo") desenharResumo(reg); }, 120);
 }
 
 /* ------------------------------------------------------------ calendário (modelo A, 30/10) */
@@ -1072,6 +1267,58 @@ function ligarTela() {
       else if (estado.detalhe != null) fecharDetalhe(true);
     });
   }
+  // Abas e Saldo do Dia (defensivo: HTML antigo não tem as abas)
+  if ($("aba-saldo")) {
+    ligar("aba-btn-fluxo", () => trocarAba("fluxo"));
+    ligar("aba-btn-saldo", () => trocarAba("saldo"));
+    $("aba-btn-fluxo").parentElement.addEventListener("keydown", (ev) => {
+      if (ev.key !== "ArrowLeft" && ev.key !== "ArrowRight") return;
+      const vai = estado.aba === "fluxo" ? "saldo" : "fluxo";
+      trocarAba(vai); $(vai === "saldo" ? "aba-btn-saldo" : "aba-btn-fluxo").focus();
+    });
+    ligar("saldo-ant", () => { estado.inicioDatas = Math.max(0, estado.inicioDatas - visiveis()); desenharSaldo(); });
+    ligar("saldo-prox", () => { estado.inicioDatas += visiveis(); desenharSaldo(); });
+    $("saldo-datas").addEventListener("click", (ev) => {
+      const b = ev.target.closest(".data-btn");
+      if (!b) return;
+      estado.atual = b.dataset.iso;
+      desenhar();
+    });
+    $("saldo-busca").addEventListener("input", (ev) => {
+      estado.saldoBusca = ev.target.value;
+      if (estado.atual) desenharListaSaldo(estado.atual);
+    });
+    $("saldo-so-vazios").addEventListener("change", (ev) => {
+      estado.saldoSoVazios = ev.target.checked;
+      if (estado.atual) desenharListaSaldo(estado.atual);
+    });
+    const lista = $("saldo-lista");
+    lista.addEventListener("focusin", (ev) => { if (ev.target.classList?.contains("saldo-input")) ev.target.select(); });
+    lista.addEventListener("keydown", (ev) => {   // Enter vai ao próximo campo (o valor é gravado ao sair do campo)
+      const el = ev.target;
+      if (ev.key !== "Enter" || !el.classList?.contains("saldo-input")) return;
+      ev.preventDefault();
+      const campos = [...lista.querySelectorAll(".saldo-input")];
+      const prox = campos[campos.indexOf(el) + 1];
+      if (prox) prox.focus(); else el.blur();
+    });
+    lista.addEventListener("change", (ev) => {
+      const el = ev.target;
+      if (!el.classList?.contains("saldo-input") || estado.saldoFalha) return;
+      const iso = el.dataset.iso, id = el.dataset.linha, l = linhaSaldo(id);
+      if (!l || iso !== estado.atual) return;
+      const anterior = saldoDe(iso, id);
+      const r = lerSaldo(el.value);
+      if (!r.ok) {
+        $("saldo-msg").insertAdjacentHTML("afterbegin", alerta("erro", esc(`${l.empresa} (${l.banco}${l.conta ? ` ${l.conta}` : ""}): ${r.motivo}`)));
+        el.value = formatarSaldo(anterior);
+        return;
+      }
+      el.value = formatarSaldo(r.valor);
+      if (r.valor === anterior) return;   // nada mudou: não grava
+      definirSaldo(iso, id, r.valor);
+    });
+  }
   window.addEventListener("resize", aoRedimensionar);
   // a largura das colunas é medida com a fonte Inter: quando ela termina de carregar, mede de novo
   try {
@@ -1145,6 +1392,14 @@ async function iniciar() {
     estado.validFalha = true;
     const m = $("validacao-msg");
     if (m) m.innerHTML = alerta("erro", esc(msgErro(e, "Não consegui carregar as validações já feitas")));
+  }
+  // Saldo do Dia: se não carregar, os campos ficam travados e nada é mostrado como salvo (sem texto técnico)
+  try {
+    await carregarSaldos();
+  } catch (e) {
+    estado.saldoFalha = true;
+    const m = $("saldo-msg");
+    if (m) m.innerHTML = alerta("erro", esc(msgErro(e, "Não consegui carregar os saldos já informados")));
   }
   desenhar();
 }
