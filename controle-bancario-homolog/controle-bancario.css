@@ -380,3 +380,59 @@ h2{font-size:.95rem;font-weight:700;margin:0 0 1rem;letter-spacing:-.01em}
 .lanc-mini--icone:hover:not(:disabled){color:var(--color-text)}
 .lanc-mini--com-icone{display:inline-flex;align-items:center;gap:.4rem}
 .lanc-mini--com-icone svg{flex:none}
+
+/* Abas do módulo (09/11/2026): "Fluxo de Caixa" (a tela de sempre) e "Saldo do Dia". */
+.abas{display:flex;gap:.25rem;border-bottom:1px solid var(--color-border);margin-bottom:1.25rem}
+.aba{appearance:none;background:none;border:0;border-bottom:2px solid transparent;margin-bottom:-1px;padding:.65rem 1.05rem;
+  font:inherit;font-weight:600;color:var(--color-text-secondary);cursor:pointer;border-radius:var(--radius-sm) var(--radius-sm) 0 0;
+  transition:color var(--transition-fast)}
+.aba:hover{color:var(--color-text)}
+.aba[aria-selected="true"]{color:var(--color-text);border-bottom-color:var(--color-green)}
+.aba:focus-visible{outline:2px solid var(--color-blue);outline-offset:-2px}
+
+/* Saldo do Dia, modelo M4 (lista com filtro): empresa | banco e conta | saldo | ponto de "preenchido". */
+.saldo-cartao{padding:0;overflow:visible}
+.saldo-topo{display:flex;justify-content:space-between;align-items:flex-end;gap:1rem;padding:1.35rem 1.5rem 0}
+.saldo-topo h2{margin:0 0 .2rem;font-size:.75rem;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--color-text-secondary)}
+.saldo-cartao .datas-nav{padding-top:.9rem}
+.saldo-info{margin:.7rem 1.5rem 0;font-size:.82rem;color:var(--color-text-secondary)}
+.saldo-info:empty{display:none}
+#saldo-msg{padding:0 1.5rem}
+#saldo-msg:not(:empty){padding-top:.8rem}
+#saldo-msg .alerta{margin-bottom:0}
+.saldo-sem-dia{margin:1rem 1.5rem 1.5rem;color:var(--color-text-secondary)}
+.saldo-filtros{display:flex;flex-wrap:wrap;align-items:center;gap:.6rem 1rem;padding:1rem 1.5rem}
+.saldo-filtros input[type=search]{flex:1 1 220px;max-width:340px;min-height:38px;padding:0 .75rem;font:inherit;color:var(--color-text);
+  background:var(--color-bg);border:1px solid var(--color-border);border-radius:var(--radius-sm)}
+.saldo-filtros input[type=search]:focus{outline:none;border-color:var(--color-blue);box-shadow:0 0 0 3px var(--color-blue-dim)}
+.saldo-chk{display:inline-flex;align-items:center;gap:.45rem;font-size:.86rem;color:var(--color-text-secondary);cursor:pointer}
+.saldo-lista{border-top:1px solid var(--color-border)}
+.saldo-item{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1.3fr) 200px 22px;gap:.75rem;align-items:center;
+  padding:.45rem 1.5rem;border-bottom:1px solid var(--color-border)}
+.saldo-item:nth-child(even){background:var(--cb-zebra)}
+.saldo-item:last-child{border-bottom:0;border-radius:0 0 var(--radius-lg) var(--radius-lg)}
+.saldo-empresa{font-weight:700;letter-spacing:.01em}
+.saldo-banco{display:flex;flex-wrap:wrap;align-items:baseline;gap:.15rem .6rem;min-width:0;color:var(--color-text)}
+.saldo-conta{font-size:.82rem;color:var(--color-text-secondary);font-variant-numeric:tabular-nums}
+.saldo-sem-conta{font-size:.72rem;font-weight:700;padding:.05rem .4rem;border-radius:4px;color:var(--color-warn);background:var(--color-warn-bg)}
+.saldo-campo{position:relative;display:block;min-width:0}
+.saldo-campo > span{position:absolute;left:.65rem;top:50%;transform:translateY(-50%);font-size:.78rem;color:var(--color-text-muted);pointer-events:none}
+.saldo-campo input{width:100%;min-height:36px;padding:0 .7rem 0 2rem;font:inherit;font-variant-numeric:tabular-nums;text-align:right;
+  color:var(--color-text);background:var(--color-bg);border:1px solid var(--color-border);border-radius:var(--radius-sm)}
+.saldo-campo input::placeholder{color:var(--color-text-muted)}
+.saldo-campo input:hover:not(:disabled){border-color:var(--color-text-muted)}
+.saldo-campo input:focus{outline:none;border-color:var(--color-blue);box-shadow:0 0 0 3px var(--color-blue-dim)}
+.saldo-campo input:disabled{opacity:.55;cursor:not-allowed}
+.saldo-campo input.neg{color:var(--color-error)}
+.saldo-ponto{width:10px;height:10px;border-radius:50%;justify-self:center;background:var(--color-border)}
+.saldo-ponto.on{background:var(--color-green)}
+.saldo-ponto.gravando{background:var(--color-warn)}
+.saldo-vazio-lista{padding:1.25rem 1.5rem;color:var(--color-text-secondary)}
+@media (max-width:640px){
+  .saldo-topo,.saldo-filtros,.saldo-info,.saldo-sem-dia,#saldo-msg{padding-left:1.1rem;padding-right:1.1rem;margin-left:0;margin-right:0}
+  .saldo-info,.saldo-sem-dia{margin-left:1.1rem;margin-right:1.1rem;padding:0}
+  .saldo-item{grid-template-columns:minmax(0,1fr) 150px 18px;padding:.5rem 1.1rem;gap:.3rem .6rem}
+  .saldo-empresa{grid-column:1/-1}
+  .saldo-banco{grid-column:1}
+  .abas .aba{padding:.6rem .8rem}
+}
