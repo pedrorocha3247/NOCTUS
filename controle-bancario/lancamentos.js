@@ -55,11 +55,27 @@ export function lerValor(texto) {
   return { ok: true, valor: deCentavos(c) };
 }
 
-/** Contas bancárias de uma empresa (pelo código oficial), no formato do cadastro da Conferência. */
+/**
+ * Contas de OUTRA empresa que também aparecem em "Outros Bancos" (pedido do Rocha, 09/11/2026): a SLIM (16) pode
+ * escolher a conta Banco do Brasil Ag. 2155 C/C 9868 -X e a Bradesco Ag. 3395 C/C 37629-9, que no cadastro são da
+ * MOMENTUM (15). Ficam AQUI e não em contas.js de propósito: a Conferência usa o número da conta como chave única
+ * para descobrir a empresa dona de cada solicitação, e a mesma conta em duas empresas deixaria isso ambíguo.
+ * O texto é igual ao do cadastro da Momentum, para o rótulo ser o mesmo nas duas empresas.
+ */
+const CONTAS_EXTRAS_OUTROS_BANCOS = Object.freeze({
+  "16": Object.freeze([
+    { banco: "Banco do Brasil - 01", agencia: "2155", conta: "9868 -X" },
+    { banco: "Bradesco - 237", agencia: "3395", conta: "37629-9" },
+  ]),
+});
+
+/** Contas bancárias de uma empresa (pelo código oficial), no formato do cadastro da Conferência, mais as extras acima. */
 export function contasDaEmpresa(codigo) {
-  return CONTAS_EMPRESA.filter((c) => String(c.codigo) === String(codigo)).map((c) => ({
-    rotulo: `${c.banco} · Ag. ${c.agencia} · C/C ${c.conta}`,
-  }));
+  const proprias = CONTAS_EMPRESA.filter((c) => String(c.codigo) === String(codigo));
+  const extras = CONTAS_EXTRAS_OUTROS_BANCOS[String(codigo)] || [];
+  const vistos = new Set();
+  return [...proprias, ...extras].map((c) => ({ rotulo: `${c.banco} · Ag. ${c.agencia} · C/C ${c.conta}` }))
+    .filter((c) => !vistos.has(c.rotulo) && vistos.add(c.rotulo));   // sem repetir se um dia a conta entrar no cadastro da empresa
 }
 
 /**
