@@ -51,6 +51,13 @@
 </main>
 
 <main id="modulo" class="oculto">
+  <!-- Abas (09/11/2026, pedido do Rocha): "Fluxo de Caixa" é a tela que já existia, sem mudança; "Saldo do Dia" é nova. -->
+  <div class="abas" role="tablist" aria-label="Abas do Controle Bancário">
+    <button type="button" class="aba" role="tab" id="aba-btn-fluxo" aria-selected="true" aria-controls="aba-fluxo">Fluxo de Caixa</button>
+    <button type="button" class="aba" role="tab" id="aba-btn-saldo" aria-selected="false" aria-controls="aba-saldo" tabindex="-1">Saldo do Dia</button>
+  </div>
+
+  <div id="aba-fluxo" role="tabpanel" aria-labelledby="aba-btn-fluxo">
   <section class="cartao">
     <h2>Relatórios</h2>
     <div class="solta" id="solta" role="button" tabindex="0" aria-controls="arquivo">
@@ -116,7 +123,7 @@
       <div class="lanc-linha lanc-cab"><span>Categoria</span><span>Valor (R$)</span></div>
       <div id="lanc-categorias"></div>
       <div class="lanc-linha lanc-total"><span>Total</span><span id="lanc-total"></span></div>
-      <div class="lanc-linha lanc-sub"><span>Diferença da tabela resumo</span><span id="lanc-dif"></span></div>
+      <div class="lanc-linha lanc-sub"><span>Diferença Fluxo × Relatório</span><span id="lanc-dif"></span></div>
       <div class="lanc-linha lanc-falta"><span>Falta justificar</span><span class="lanc-pill" id="lanc-falta"></span></div>
     </div>
 
@@ -201,6 +208,36 @@
       </div>
     </div>
   </section>
+  </div>
+
+  <!-- Saldo do Dia (09/11/2026, modelo M4 escolhido pelo Rocha): sempre as mesmas 13 empresas e 26 contas da planilha de referência,
+       com o saldo atual digitado à mão, guardado por data + empresa/banco (não depende do fluxo importado). -->
+  <div id="aba-saldo" class="oculto" role="tabpanel" aria-labelledby="aba-btn-saldo">
+    <section class="cartao saldo-cartao" aria-labelledby="saldo-titulo">
+      <div class="saldo-topo">
+        <div>
+          <h2 id="saldo-titulo">Saldo do dia</h2>
+          <p class="tabela-total" id="saldo-total"></p>
+        </div>
+        <span class="pilula" id="saldo-contagem"></span>
+      </div>
+      <div class="datas-nav saldo-datas oculto" id="saldo-datas-nav">
+        <button type="button" class="seta" id="saldo-ant" aria-label="Datas anteriores" title="Datas anteriores"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg></button>
+        <div class="datas" id="saldo-datas" role="group" aria-label="Data do saldo"></div>
+        <button type="button" class="seta" id="saldo-prox" aria-label="Próximas datas" title="Próximas datas"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></button>
+      </div>
+      <p class="saldo-info" id="saldo-info"></p>
+      <div id="saldo-msg" aria-live="polite"></div>
+      <p class="saldo-sem-dia oculto" id="saldo-sem-dia">Importe o relatório de fluxo de caixa para abrir um dia. Os saldos ficam guardados por data.</p>
+      <div id="saldo-corpo">
+        <div class="saldo-filtros">
+          <input type="search" id="saldo-busca" placeholder="Buscar empresa, banco ou conta" autocomplete="off" aria-label="Buscar empresa, banco ou conta">
+          <label class="saldo-chk"><input type="checkbox" id="saldo-so-vazios"> Só os que faltam preencher</label>
+        </div>
+        <div class="saldo-lista" id="saldo-lista" role="list"></div>
+      </div>
+    </section>
+  </div>
 </main>
 
 <script type="module" src="./controle-bancario.js"></script>
